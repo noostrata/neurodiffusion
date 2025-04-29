@@ -1,140 +1,311 @@
-# VAST.ai Setup and Workflow Log
+# Comprehensive VAST.ai Guide for SD-Turbo Real-time Streaming
 
-## Initial Setup (Date: Current Date)
+## 1. 🚀 Quick Reference & Overview
 
-### Prerequisites
-- Python 3.13.3 is installed via Homebrew
-- VAST.ai CLI is installed and accessible in the PATH
-- SSH key pair exists at ~/.ssh/id_rsa (private) and ~/.ssh/id_rsa.pub (public)
-- VAST.ai API key is configured (~/.config/vastai/vast_api_key)
+### Instance Specifications
+- **GPU**: RTX 4090 (24GB VRAM) - Recommended for good price/performance.
+- **Image**: `vastai/pytorch` based image (e.g., `vastai/pytorch:2.6.0-cuda-12.4.1-ipv2`). Provides a good base with CUDA drivers.
+- **CUDA Requirement**: Needs CUDA 11.8 for optimal PyTorch 2.0.1 compatibility.
+- **Cost**: ~$0.45/hour (typical RTX 4090 rate)
+- **Performance**: 50-80+ FPS image generation (SD-Turbo 512x512). Stream FPS depends on network/browser.
+- **Storage**: Minimum 30GB recommended (OS, CUDA toolkit, Python env, model cache).
+- **Instance ID Example**: 19768221
+- **Connection Example**: `ssh -p 50267 root@193.69.10.108` (Use details from your specific instance)
 
-### How VAST.ai API and SSH Work
-1. **VAST.ai API Key**: 
-   - The API key authenticates your VAST.ai CLI commands
-   - It is stored in ~/.config/vastai/vast_api_key
-   - You can set it using: `vastai set api-key YOUR_KEY_STRING`
+### Core Application: Real-time MJPEG Stream with Prompt Control
+- **Goal**: Generate images continuously using SD-Turbo on the VAST.ai GPU and stream them in real-time to a web browser, allowing the user to change the generation prompt dynamically.
+- **Method**:
+    - A Python Flask server (`realtime_stream.py`) runs on the VAST.ai instance.
+    - One thread generates images using SD-Turbo optimized with `torch.compile` and `xformers`.
+    - The Flask app serves:
+        - `/`: A simple HTML page with an `<img>` tag pointing to `/stream` and a prompt input form.
+        - `/stream`: A `multipart/x-mixed-replace` (MJPEG) endpoint continuously yielding the latest generated JPEG frame.
+        - `/prompt`: A POST endpoint to receive a new prompt via JSON, updating the generation thread.
+    - Local access is achieved via an SSH tunnel (`tunnel_to_stream.sh`) forwarding a local port (e.g., 8888) to the Flask server's port (8000) on the VAST.ai instance.
 
-2. **SSH Authentication**:
-   - VAST.ai uses SSH for secure connections to remote instances
-   - Your SSH public key (~/.ssh/id_rsa.pub) is automatically uploaded to instances you create
-   - If you don't have an SSH key, generate one with: `ssh-keygen -t rsa -f ~/.ssh/id_rsa -C "vast"`
+### Key Files
+- `realtime_stream.py`: The core Flask application and image generation logic.
+- `setup.sh`: One-time setup script to install dependencies on the VAST.ai instance.
+- `start_stream_server.sh`: Local script to copy `realtime_stream.py` to the remote instance and start it as a background process using `nohup`.
+- `tunnel_to_stream.sh`: Local script to establish the SSH tunnel for viewing the stream.
+- `vastai_setup_log.txt`: This documentation file.
 
-## Instance Creation Process
+### Prerequisites (Local Machine)
+- SSH client and key pair configured (`~/.ssh/id_rsa` is typical).
+- Ability to run bash scripts (`.sh` files).
+- Web browser (Firefox, Chrome, Brave, etc.).
+- Optional: `curl`, `mpv` for non-browser stream testing.
+- Optional: VAST.ai CLI (`pip install vast-ai`) for instance management.
 
-### 1. Search for Available Instances
-We searched for RTX 5090 instances with these parameters:
+## 2. 🔑 Setup & Authentication (Local & VAST.ai)
+
+### VAST.ai Account & API Key (Optional but Recommended)
+- For programmatic instance management:
+    ```bash
+    # Install CLI if needed
+    pip install vast-ai
+
+    # Set your API key (get from VAST.ai website)
+    vastai set api-key YOUR_API_KEY
+
+    # Verify configuration
+    cat ~/.config/vastai/vast_api_key
+    ```
+
+### SSH Key Management
+- Ensure your public SSH key (`~/.ssh/id_rsa.pub`) is added to your VAST.ai account settings under "Account -> Edit SSH Key".
+- Use `ssh-agent` locally to avoid repeated passphrase prompts:
+    ```bash
+    # Start agent if not running
+    eval $(ssh-agent -s)
+
+    # Add your key (enter passphrase once if needed)
+    ssh-add ~/.ssh/id_rsa
+    ```
+- The provided scripts (`start_stream_server.sh`, `tunnel_to_stream.sh`) include logic to handle SSH keys and passphrases using `SSH_ASKPASS` and temporary config files, simplifying automation. Ensure the `PASSPHRASE` variable in those scripts matches your SSH key passphrase if it has one (leave blank if not).
+
+### SSH Configuration Optimizations (Local `~/.ssh/config`)
+- Recommended to prevent timeouts during long connections:
+    ```
+    Host *.vast.ai *.compute.vast.ai
+        ServerAliveInterval 60
+        ServerAliveCountMax 3
+        ConnectTimeout 10
+    ```
+    *(Note: Added `*.compute.vast.ai` as hostnames may vary)*
+
+## 3. 🖥️ VAST.ai Instance Management
+
+### Finding and Creating an Instance
+1.  **Search:** Use the VAST.ai website UI or CLI to find suitable instances. Look for:
+    - GPU: `RTX 4090` (or similar high-VRAM GPU)
+    - Image: Select a PyTorch image compatible with CUDA 11.8 (e.g., `vastai/pytorch` based images are often good). Ensure Jupyter is included if desired, although not strictly necessary for this streaming setup.
+    - Reliability: High reliability score (>0.95).
+    - Price: Lowest `dph` (cost per hour).
+    - Disk Space: Minimum 30GB requested.
+    - Network: Good speeds (>500 Mbps down).
+    ```bash
+    # Example CLI search (adjust as needed)
+    vastai search offers 'gpu_name=RTX_4090 num_gpus=1 reliability>0.95 dph<0.5 inet_down>500 disk_space>=35 rented=False cuda_vers>=11.8' -o 'dph-'
+    ```
+2.  **Create:** Rent the chosen instance via the UI or CLI. Ensure "Use Jupyter Lab environment" is checked if using a Jupyter-enabled image.
+    ```bash
+    # Example CLI create (replace <MACHINE_ID>)
+    vastai create instance <MACHINE_ID> --image <SELECTED_IMAGE_PATH> --disk 35 --ssh --direct --label stream-test
+    ```
+3.  **Get Connection Info:** Once the instance is "Running", note down the SSH connection details from the VAST.ai "Instances" page:
+    - SSH Host IP Address
+    - SSH Port
+    - User (usually `root`)
+
+### Storing Connection Info (Recommended)
+- Update the `SSH_HOST` and `SSH_PORT` variables at the top of `start_stream_server.sh` and `tunnel_to_stream.sh` with the details of your current instance.
+- Alternatively, create a `ssh_config.json` (like `ssh_19768221.json`) and modify the scripts to read from it (this requires adding JSON parsing tools like `jq` or Python parsing to the scripts).
+
+### Instance Lifecycle
+- **Connect:** `ssh -p <PORT> root@<HOST_IP>`
+- **Destroy:** Remember to destroy the instance via the VAST.ai website or CLI when finished to stop charges: `vastai destroy instance <INSTANCE_ID>`
+
+## 4. 📦 Environment Setup on VAST.ai Instance
+
+### One-Time Setup Script (`setup.sh`)
+- This script installs all necessary system and Python packages on the remote VAST.ai instance.
+- **Process:**
+    1.  **Copy:** Upload the local `setup.sh` to the instance:
+        ```bash
+        scp -P <PORT> setup.sh root@<HOST_IP>:/workspace/
+        ```
+    2.  **Execute:** Run the script on the instance via SSH:
+        ```bash
+        ssh -p <PORT> root@<HOST_IP> "bash /workspace/setup.sh"
+        ```
+        *(This may take several minutes, especially the `pip install` steps)*
+
+### Key Dependencies Installed by `setup.sh`
+- **System:** `git`, `python3-pip`
+- **Python:**
+    - `torch==2.0.1+cu118 torchvision==0.15.2+cu118` (Specific PyTorch build for CUDA 11.8)
+    - `numpy==1.26.4` (Known compatible version)
+    - `diffusers==0.24.0`
+    - `transformers==4.32.0`
+    - `accelerate==0.23.0`
+    - `xformers==0.0.22` (For memory-efficient attention)
+    - `Flask` (Web framework)
+    - `Flask-Cors` (Handles Cross-Origin Resource Sharing for the web UI)
+
+### Container Environment Notes
+- **User:** Commands run as `root`. `pip` installs packages globally for the root user.
+- **Working Directory:** `/workspace` is the primary persistent storage location.
+- **Model Cache:** Hugging Face models (like SD-Turbo) are downloaded to `/root/.cache/huggingface/hub/`. This persists until the instance is destroyed. Subsequent runs that use the same model will load much faster.
+- **Potential Conflicts:** Default VAST.ai images might auto-start `tmux` or `jupyter`. While our current setup doesn't rely on these, be aware they might consume resources or ports if not disabled (`touch ~/.no_auto_tmux`).
+
+## 5. 🚀 Running the Real-Time Stream
+
+### Workflow
+1.  **Ensure Setup Done:** Verify the one-time `setup.sh` has been run successfully on the VAST.ai instance.
+2.  **Start Server (Locally):** Run `./start_stream_server.sh`. This script performs:
+    - Copies the latest `realtime_stream.py` to `/workspace/` on the remote instance.
+    - Kills any previous `realtime_stream.py` process on the remote instance using `pkill`.
+    - Starts `realtime_stream.py` as a background process using `nohup` on the remote instance.
+    - Redirects server output (stdout & stderr) to `/workspace/server.log` on the remote instance.
+3.  **Start Tunnel (Locally):** In a *separate* local terminal, run `./tunnel_to_stream.sh`.
+    - This script establishes an SSH tunnel.
+    - It forwards connections to your local machine's port `8888` to the remote instance's port `8000` (where the Flask server is listening).
+    - Keep this script running in its terminal. Check its output for any connection errors.
+4.  **Access Stream (Locally):** Open a web browser and navigate to `http://localhost:8888/`.
+    - You should see the web UI.
+    - The image should update dynamically (MJPEG stream).
+    - You should be able to type a new prompt (e.g., "a futuristic dog astronaut") and click "Set Prompt" to change the generated images.
+
+### Server Details (`realtime_stream.py`)
+- **Configuration:** Key parameters like `TARGET_FPS`, `INITIAL_PROMPT`, `MODEL_ID`, `SERVER_PORT` are at the top of the script.
+- **Model Loading:** Uses `AutoPipelineForText2Image`, `float16` precision, `xformers`, and `torch.compile` for optimization. The first run involves compilation and takes longer (~30s), subsequent starts are faster if the model cache exists.
+- **Generation Thread (`_gen_loop`):** Runs continuously, gets the current prompt, generates an image, encodes it to JPEG in memory, stores it in `latest_jpeg`, and paces itself based on `TARGET_FPS`.
+- **Flask App:**
+    - **`/`:** Serves the basic HTML interface.
+    - **`/stream`:** Handles MJPEG streaming via the `_mjpeg` generator function. It yields the `latest_jpeg` data formatted with the correct headers.
+    - **`/prompt`:** Handles POST requests with JSON (`{"prompt": "..."}`), updates the shared `PROMPT` state using a lock, and logs activity.
+- **Background Process:** `start_stream_server.sh` uses `nohup ... &` to run the server persistently in the background, surviving SSH disconnections. Logs are captured in `/workspace/server.log`.
+
+## 6. 📊 Monitoring & Troubleshooting
+
+### Server Logs (Remote)
+- The primary tool for debugging server-side issues.
+- **Access:** `ssh -p <PORT> root@<HOST_IP> "tail -f /workspace/server.log"`
+- **Look for:**
+    - `[init] model loaded and compiled` (Successful model setup)
+    - `[gen] starting loop...` (Generation thread started)
+    - `[flask] running on 0.0.0.0:8000` (Flask server started)
+    - `[stream] Client connected.` (Browser connected to `/stream`)
+    - `[stream] Client disconnected.` (Browser closed the stream connection)
+    - `[prompt] Request received` (Attempt to set prompt via UI)
+    - `[prompt] Raw data received: ...`
+    - `[prompt] => Successfully set to: ...`
+    - **Any Python Tracebacks:** These indicate crashes. Read the error message carefully.
+
+### Local Tunnel Issues (`tunnel_to_stream.sh`)
+- **Check Output:** Always check the terminal where the tunnel script is running for errors immediately after starting it.
+- **`Address already in use`:** Another process is using local port 8888. Find and kill it (`lsof -i :8888`, `kill <PID>`) or change the local port in the script (e.g., `-L 9999:127.0.0.1:8000`).
+- **Authentication Errors:** Check SSH key setup (`ssh-add`) and the `PASSPHRASE` variable in the script.
+- **`Connection refused` (when accessing `localhost:8888`):** The tunnel likely isn't running or established correctly, or the remote server isn't listening on port 8000 (check `server.log`).
+
+### Browser Issues (`http://localhost:8888/`)
+- **Use Developer Tools (F12):** Essential for debugging client-side problems.
+    - **Console Tab:** Check for Javascript errors (red messages).
+    - **Network Tab:**
+        - Inspect the request to `/stream`. Status should be 200. Headers should include `Content-Type: multipart/x-mixed-replace`. Size should continuously increase. If it finishes quickly or has a different status (e.g., 500), the server-side stream handler has a problem (check `server.log`).
+        - Inspect the request to `/prompt` after clicking "Set Prompt". Status should be 200. Check Request Payload (is the JSON correct?) and Response (should be `{"status":"ok", ...}`). A 500 status indicates a server-side crash in the `/prompt` handler (check `server.log` for the traceback).
+- **Static Image:** Usually means the browser isn't handling the MJPEG stream correctly, or the server stopped sending frames after the first one (check `server.log` for errors in the `_mjpeg` loop or generator thread). Ensure the `Content-Type` header is correct in the Network tab.
+- **Connection Reset:** Browser connected, but the server closed the connection abruptly. Often caused by a server crash when handling the specific request (check `server.log`).
+
+### GPU Monitoring (Remote)
+- Useful to check if the model is utilizing the GPU.
+- `ssh -p <PORT> root@<HOST_IP> "nvidia-smi"` (Snapshot)
+- `ssh -p <PORT> root@<HOST_IP> "watch -n 1 nvidia-smi"` (Continuous)
+
+### Process Check (Remote)
+- Check if the server is running: `ssh -p <PORT> root@<HOST_IP> "pgrep -af python3"` (Should show `python3 realtime_stream.py`).
+- Check listening ports: `ssh -p <PORT> root@<HOST_IP> "netstat -tulnp | grep 8000"` (Should show Python listening on `0.0.0.0:8000`).
+
+### Tmux Issues (Historical Debugging Note)
+- We initially tried using `tmux` in `start_stream_server.sh` to run the server.
+- This failed silently - the `python3 realtime_stream.py` process seemed to crash immediately when launched via `tmux new-session -d ...`.
+- Switching to `nohup ... &` proved more reliable for backgrounding the server process in this environment. If `nohup` fails, investigating why `tmux` launch fails might be necessary (perhaps environment variable differences or terminal requirements).
+
+## 7. 💰 Cost Management
+
+- **Monitor Usage:** Keep track of instance runtime.
+- **Destroy Promptly:** Use `vastai destroy instance <INSTANCE_ID>` or the web UI as soon as you are finished to avoid unnecessary costs.
+
+## 8. 📝 Summary & Key Learnings
+
+- **Architecture:** Flask + MJPEG streaming is effective for real-time viewing. Separating generation into a thread allows Flask to remain responsive.
+- **Dependencies:** Precise package versions (PyTorch, CUDA, NumPy, diffusers, xformers) are critical for compatibility. Use the versions in `setup.sh`.
+- **Backgrounding:** `nohup ... > logfile 2>&1 &` is a reliable way to run the server persistently on VAST.ai, especially when `tmux` causes issues.
+- **Debugging:** Check logs systematically: `server.log` (remote) for server errors, tunnel script output (local) for connection issues, and browser developer tools (local) for client-side/network request problems.
+- **SSH Tunneling:** Essential for accessing the server running on the private instance network from your local machine. Ensure the local and remote ports are correctly mapped.
+
+## 9. 🚫 Troubleshooting
+
+### NumPy Errors
+If you see NumPy version compatibility errors:
+```bash
+pip install numpy==1.26.4
 ```
-vastai search offers 'gpu_name=RTX_5090 num_gpus=1 reliability>0.95 dph<1 inet_down>300 disk_space>=40 rented=False' -o 'dph-'
+
+Specific error message:
+```
+A module that was compiled using NumPy 1.x cannot be run in NumPy 2.2.3 as it may crash
 ```
 
-Search results showed instances ranging from $0.51 to $0.79 per hour.
-
-### 2. Selected Instance
-We selected instance ID 19427380 with:
-- GPU: RTX 5090
-- Price: $0.5407/hour
-- vCPUs: 16.0
-- RAM: 257.8 GB
-- Network: 687.5 Mbps upload / 543.2 Mbps download
-- Reliability: 96.8%
-
-### 3. Created Instance
-We created the instance with:
-```
-vastai create instance 19427380 --image pytorch/pytorch:2.3.0-cuda12.8-cudnn8-devel --disk 40 --ssh --direct --label sdturbo
+### CUDA Errors
+For CUDA version mismatches:
+```bash
+pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
 ```
 
-This returned contract ID: 19767641
-
-### 4. Instance Status
-The instance was created successfully and entered "loading" state.
-SSH connection details:
+Common error:
 ```
-ssh -p 17640 root@ssh4.vast.ai
+RuntimeError: CUDA error: no kernel image is available for execution on the device
 ```
 
-### 5. Current Status
-As of now, the instance is still in the "loading" state. This is normal for larger Docker images like PyTorch, which may take some time to download and initialize.
+### Memory Issues
+If you encounter OOM errors:
+1. Use half precision (`torch_dtype=torch.float16`)
+2. Enable xformers
+3. Reduce image dimensions
 
-### 6. Connection Information Storage
-We've created a JSON file to store the connection information:
+Example OOM error:
 ```
-ssh_19767641.json
-```
-
-This file contains:
-```json
-{
-  "instance_id": 19767641,
-  "machine_id": 35237,
-  "ssh_host": "ssh4.vast.ai",
-  "ssh_port": 17640,
-  "ssh_user": "root",
-  "ssh_command": "ssh -p 17640 root@ssh4.vast.ai",
-  "gpu_model": "RTX_5090",
-  "hourly_rate": 0.5407,
-  "status": "loading",
-  "image": "pytorch/pytorch:2.3.0-cuda12.8-cudnn8-devel",
-  "created_at": "current_timestamp"
-}
+RuntimeError: CUDA out of memory. Tried to allocate 512.00 MiB (GPU 0; 23.69 GiB total capacity)
 ```
 
-### 7. Encountered Error
-After checking the detailed instance information, we found the following error:
-```
-"status_msg": "Error response from daemon: manifest for pytorch/pytorch:2.3.0-cuda12.8-cudnn8-devel not found: manifest unknown: manifest unknown\n"
-```
+### Connection Issues
+If SSH connection fails:
+1. Verify SSH port and IP from the VAST.ai interface
+2. Try accessing via Jupyter interface if SSH fails
 
-This indicates that the Docker image we specified (`pytorch/pytorch:2.3.0-cuda12.8-cudnn8-devel`) couldn't be found. We need to use a valid image tag.
+### Network-specific Issues
+- SSH connections timing out: Add `ServerAliveInterval 60` to ~/.ssh/config
+- Intermittent connection drops: Use tmux to keep sessions alive
+- Web interface timing out: Refresh page and reconnect with token
 
-### 8. Created New Instance
-We destroyed the previous instance and created a new one with a valid Docker image:
-```
-vastai destroy instance 19767641
-vastai create instance 19427380 --image pytorch/pytorch:2.0.0-cuda11.7-cudnn8-devel --disk 40 --ssh --direct --label sdturbo
-```
+## 10. 💰 Cost Management
 
-This returned a new contract ID: 19767725
+### Instance Pricing
+- RTX 4090: $0.30-0.45/hr for 50-80 FPS
+- RTX 5090: $0.53-0.69/hr for theoretical 104 FPS
 
-We updated our connection information file to reflect the new instance ID.
+### Shutting Down Instances
+Always destroy instances when done to avoid unnecessary charges:
 
-### 9. Updated SSH Connection Details
-We got the updated SSH connection details for the new instance:
-```
-vastai ssh-url 19767725
-ssh://root@ssh4.vast.ai:17724
+```bash
+vastai destroy instance <INSTANCE_ID>
 ```
 
-We updated our connection file with the correct port and renamed it to match the new instance ID:
-```
-mv ssh_19767641.json ssh_19767725.json
-```
+### Batch Processing Cost Optimization
+For batch processing, consider creating a script that destroys the instance when processing is complete:
 
-Updated connection information:
-```json
-{
-  "old_instance_id": 19767641,
-  "instance_id": 19767725,
-  "machine_id": 35237,
-  "ssh_host": "ssh4.vast.ai",
-  "ssh_port": 17724,
-  "ssh_user": "root",
-  "ssh_command": "ssh -p 17724 root@ssh4.vast.ai",
-  "gpu_model": "RTX_5090",
-  "hourly_rate": 0.5407,
-  "status": "loading",
-  "image": "pytorch/pytorch:2.0.0-cuda11.7-cudnn8-devel"
-}
+```bash
+# Example batch processing script
+ssh -p $PORT root@$IP "cd /workspace && python process_batch.py"
+vastai destroy instance $INSTANCE_ID
 ```
 
-## Next Steps
-- Wait for the instance to fully load
-- Connect via SSH
-- Install necessary packages for diffusion models
-- Run test inference
-- Download results
-- Destroy instance when done
+## 11. 📝 Summary & Key Learnings
 
-## Cost Information
-- RTX 5090: $0.53–0.69 per hour (typical), 29% faster than 4090
-- RTX 4090: $0.30–0.40 per hour (typical), still ≥ 25 FPS 
+### Best Practices
+1. Store SSH connection details from web UI rather than CLI
+2. Use vastai/pytorch images instead of official pytorch images
+3. RTX 4090 offers best price/performance ratio
+4. Deploy automation scripts for repetitive tasks
+5. Use SSH config and keys for seamless authentication
+
+### Performance Optimization Checklist
+- ✅ Use PyTorch 2.0.1 with CUDA 11.8
+- ✅ Enable xformers for memory-efficient attention
+- ✅ Compile UNet with PyTorch 2.0+
+- ✅ Use half precision throughout
+- ✅ For SD-Turbo, use single inference step with guidance scale of 0.0
+- ✅ Package versions carefully matched for compatibility
+- ✅ Create automation scripts for key workflows 

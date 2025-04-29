@@ -1,0 +1,16 @@
+{
+  "instance_id": 19768221,
+  "machine_id": 29467,
+  "ssh_host": "193.69.10.108",
+  "ssh_port": 50267,
+  "ssh_user": "root",
+  "ssh_command": "ssh -p 50267 root@193.69.10.108",
+  "gpu_model": "RTX_4090",
+  "hourly_rate": 0.4481,
+  "status": "running",
+  "image": "vastai/pytorch:2.6.0-cuda-12.4.1-ipv2",
+  "jupyter_token": "457b2b26ba43a856ac5baf492c918a8d1ad8dec29873b9cab762204014235020",
+  "jupyter_url": "http://193.69.10.108:8888/lab?token=457b2b26ba43a856ac5baf492c918a8d1ad8dec29873b9cab762204014235020",
+  "location": "United Kingdom, GB",
+  "created_at": "current_timestamp"
+}

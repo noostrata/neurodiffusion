@@ -1,0 +1,50 @@
+# How to Run Schizofusion (Real-time Stream)
+
+This guide assumes:
+- You have a VAST.ai instance running with the correct GPU and image.
+- You have run the one-time setup script (`setup.sh`) successfully on the instance.
+- You have updated `start_stream_server.sh` and `tunnel_to_stream.sh` with your instance's SSH IP and Port.
+- Your local machine has standard tools like `ssh`, `ssh-agent`, and `bash`.
+
+Steps (Run these on your Local Machine):
+
+1.  Start the Server on VAST.ai:
+    - Open a terminal.
+    - `cd` to project directory.
+    - Run `./start_stream_server.sh`
+    - This sends the latest code (`realtime_stream.py`) and starts the server remotely. Wait for it to finish.
+
+2.  Start the SSH Tunnel:
+    - Open a new, separate terminal.
+    - `cd` to project directory.
+    - Run `./tunnel_to_stream.sh`
+    - Check for errors. If connected, leave this terminal open to keep the tunnel active.
+
+    *(Note: Run server script first, then keep tunnel script active in a separate terminal.)*
+
+3.  Access the Stream:
+    - Open your web browser (e.g., Firefox, Chrome, Brave).
+    - Go to the address:
+      ```
+      http://localhost:8888/
+      ```
+    - You should see the Schizofusion interface. The image should update dynamically, and you should be able to enter new prompts.
+
+Stopping:
+
+-   To stop viewing the stream locally, go to the terminal window running `./tunnel_to_stream.sh` and press `Ctrl+C`.
+-   The server process will continue running on the VAST.ai instance in the background.
+-   IMPORTANT: Remember to destroy your VAST.ai instance when you are finished to avoid further charges!
+
+Troubleshooting:
+
+-   **Port 8888 Already in Use:** If `./tunnel_to_stream.sh` fails with an "Address already in use" error for port 8888, it means another process is using it.
+    - Ensure any previous `./tunnel_to_stream.sh` processes are stopped (pressing `Ctrl+C` in its terminal should be sufficient with the current script).
+    - If the error persists, find the process using the port: `lsof -i tcp:8888 | cat`
+    - Terminate the conflicting process using its PID: `kill -9 <PID>` (replace `<PID>` with the actual process ID).
+-   If the stream doesn't work, check the server logs on the remote instance:
+    ```bash
+    ssh -p <PORT> root@<HOST_IP> "tail -f /workspace/server.log"
+    ```
+    (Replace `<PORT>` and `<HOST_IP>` with your instance details).
+-   Consult `vastai_setup_log.txt` for more detailed debugging steps. 

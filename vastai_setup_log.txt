@@ -1,0 +1,140 @@
+# VAST.ai Setup and Workflow Log
+
+## Initial Setup (Date: Current Date)
+
+### Prerequisites
+- Python 3.13.3 is installed via Homebrew
+- VAST.ai CLI is installed and accessible in the PATH
+- SSH key pair exists at ~/.ssh/id_rsa (private) and ~/.ssh/id_rsa.pub (public)
+- VAST.ai API key is configured (~/.config/vastai/vast_api_key)
+
+### How VAST.ai API and SSH Work
+1. **VAST.ai API Key**: 
+   - The API key authenticates your VAST.ai CLI commands
+   - It is stored in ~/.config/vastai/vast_api_key
+   - You can set it using: `vastai set api-key YOUR_KEY_STRING`
+
+2. **SSH Authentication**:
+   - VAST.ai uses SSH for secure connections to remote instances
+   - Your SSH public key (~/.ssh/id_rsa.pub) is automatically uploaded to instances you create
+   - If you don't have an SSH key, generate one with: `ssh-keygen -t rsa -f ~/.ssh/id_rsa -C "vast"`
+
+## Instance Creation Process
+
+### 1. Search for Available Instances
+We searched for RTX 5090 instances with these parameters:
+```
+vastai search offers 'gpu_name=RTX_5090 num_gpus=1 reliability>0.95 dph<1 inet_down>300 disk_space>=40 rented=False' -o 'dph-'
+```
+
+Search results showed instances ranging from $0.51 to $0.79 per hour.
+
+### 2. Selected Instance
+We selected instance ID 19427380 with:
+- GPU: RTX 5090
+- Price: $0.5407/hour
+- vCPUs: 16.0
+- RAM: 257.8 GB
+- Network: 687.5 Mbps upload / 543.2 Mbps download
+- Reliability: 96.8%
+
+### 3. Created Instance
+We created the instance with:
+```
+vastai create instance 19427380 --image pytorch/pytorch:2.3.0-cuda12.8-cudnn8-devel --disk 40 --ssh --direct --label sdturbo
+```
+
+This returned contract ID: 19767641
+
+### 4. Instance Status
+The instance was created successfully and entered "loading" state.
+SSH connection details:
+```
+ssh -p 17640 root@ssh4.vast.ai
+```
+
+### 5. Current Status
+As of now, the instance is still in the "loading" state. This is normal for larger Docker images like PyTorch, which may take some time to download and initialize.
+
+### 6. Connection Information Storage
+We've created a JSON file to store the connection information:
+```
+ssh_19767641.json
+```
+
+This file contains:
+```json
+{
+  "instance_id": 19767641,
+  "machine_id": 35237,
+  "ssh_host": "ssh4.vast.ai",
+  "ssh_port": 17640,
+  "ssh_user": "root",
+  "ssh_command": "ssh -p 17640 root@ssh4.vast.ai",
+  "gpu_model": "RTX_5090",
+  "hourly_rate": 0.5407,
+  "status": "loading",
+  "image": "pytorch/pytorch:2.3.0-cuda12.8-cudnn8-devel",
+  "created_at": "current_timestamp"
+}
+```
+
+### 7. Encountered Error
+After checking the detailed instance information, we found the following error:
+```
+"status_msg": "Error response from daemon: manifest for pytorch/pytorch:2.3.0-cuda12.8-cudnn8-devel not found: manifest unknown: manifest unknown\n"
+```
+
+This indicates that the Docker image we specified (`pytorch/pytorch:2.3.0-cuda12.8-cudnn8-devel`) couldn't be found. We need to use a valid image tag.
+
+### 8. Created New Instance
+We destroyed the previous instance and created a new one with a valid Docker image:
+```
+vastai destroy instance 19767641
+vastai create instance 19427380 --image pytorch/pytorch:2.0.0-cuda11.7-cudnn8-devel --disk 40 --ssh --direct --label sdturbo
+```
+
+This returned a new contract ID: 19767725
+
+We updated our connection information file to reflect the new instance ID.
+
+### 9. Updated SSH Connection Details
+We got the updated SSH connection details for the new instance:
+```
+vastai ssh-url 19767725
+ssh://root@ssh4.vast.ai:17724
+```
+
+We updated our connection file with the correct port and renamed it to match the new instance ID:
+```
+mv ssh_19767641.json ssh_19767725.json
+```
+
+Updated connection information:
+```json
+{
+  "old_instance_id": 19767641,
+  "instance_id": 19767725,
+  "machine_id": 35237,
+  "ssh_host": "ssh4.vast.ai",
+  "ssh_port": 17724,
+  "ssh_user": "root",
+  "ssh_command": "ssh -p 17724 root@ssh4.vast.ai",
+  "gpu_model": "RTX_5090",
+  "hourly_rate": 0.5407,
+  "status": "loading",
+  "image": "pytorch/pytorch:2.0.0-cuda11.7-cudnn8-devel"
+}
+```
+
+## Next Steps
+- Wait for the instance to fully load
+- Connect via SSH
+- Install necessary packages for diffusion models
+- Run test inference
+- Download results
+- Destroy instance when done
+
+## Cost Information
+- RTX 5090: $0.53–0.69 per hour (typical), 29% faster than 4090
+- RTX 4090: $0.30–0.40 per hour (typical), still ≥ 25 FPS 

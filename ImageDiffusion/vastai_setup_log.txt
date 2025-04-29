@@ -12,15 +12,16 @@
 - **Instance ID Example**: 19768221
 - **Connection Example**: `ssh -p 50267 root@193.69.10.108` (Use details from your specific instance)
 
-### Core Application: Real-time MJPEG Stream with Prompt Control
-- **Goal**: Generate images continuously using SD-Turbo on the VAST.ai GPU and stream them in real-time to a web browser, allowing the user to change the generation prompt dynamically.
+### Core Application: Real-time MJPEG Stream with Prompt & Parameter Control
+- **Goal**: Generate images continuously using SD-Turbo on the VAST.ai GPU and stream them in real-time to a web browser, allowing the user to change the generation prompt and key parameters (like steps and guidance) dynamically.
 - **Method**:
     - A Python Flask server (`realtime_stream.py`) runs on the VAST.ai instance.
-    - One thread generates images using SD-Turbo optimized with `torch.compile` and `xformers`.
+    - One thread generates images using SD-Turbo optimized with `torch.compile` and `xformers`. This thread now reads both prompt and generation parameters from shared, thread-safe state objects.
     - The Flask app serves:
-        - `/`: A simple HTML page with an `<img>` tag pointing to `/stream` and a prompt input form.
+        - `/`: A simple HTML page with an `<img>` tag pointing to `/stream`, a prompt input form, and sliders for `num_inference_steps` and `guidance_scale`.
         - `/stream`: A `multipart/x-mixed-replace` (MJPEG) endpoint continuously yielding the latest generated JPEG frame.
-        - `/prompt`: A POST endpoint to receive a new prompt via JSON, updating the generation thread.
+        - `/prompt`: A POST endpoint to receive a new prompt via JSON, updating the shared prompt state.
+        - `/params`: GET endpoint to retrieve current parameter values (steps, guidance); POST endpoint to update them via JSON.
     - Local access is achieved via an SSH tunnel (`tunnel_to_stream.sh`) forwarding a local port (e.g., 8888) to the Flask server's port (8000) on the VAST.ai instance.
 
 ### Key Files
@@ -153,18 +154,20 @@
     - It forwards connections to your local machine's port `8888` to the remote instance's port `8000` (where the Flask server is listening).
     - Keep this script running in its terminal. Check its output for any connection errors.
 4.  **Access Stream (Locally):** Open a web browser and navigate to `http://localhost:8888/`.
-    - You should see the web UI.
+    - You should see the web UI with the image stream, prompt input, and sliders for "Steps" and "Guidance Scale".
     - The image should update dynamically (MJPEG stream).
     - You should be able to type a new prompt (e.g., "a futuristic dog astronaut") and click "Set Prompt" to change the generated images.
+    - Adjusting the sliders will update the `num_inference_steps` and `guidance_scale` used by the generation thread in near real-time (after a brief debounce period).
 
 ### Server Details (`realtime_stream.py`)
-- **Configuration:** Key parameters like `TARGET_FPS`, `INITIAL_PROMPT`, `MODEL_ID`, `SERVER_PORT` are at the top of the script.
+- **Configuration:** Key parameters like `TARGET_FPS`, `INITIAL_PROMPT`, `MODEL_ID`, `SERVER_PORT`, `DEFAULT_NUM_INFERENCE_STEPS`, `DEFAULT_GUIDANCE_SCALE` are at the top of the script.
 - **Model Loading:** Uses `AutoPipelineForText2Image`, `float16` precision, `xformers`, and `torch.compile` for optimization. The first run involves compilation and takes longer (~30s), subsequent starts are faster if the model cache exists.
-- **Generation Thread (`_gen_loop`):** Runs continuously, gets the current prompt, generates an image, encodes it to JPEG in memory, stores it in `latest_jpeg`, and paces itself based on `TARGET_FPS`.
+- **Generation Thread (`_gen_loop`):** Runs continuously, gets the current prompt and parameters (`num_inference_steps`, `guidance_scale`) from thread-safe state objects (`PromptState`, `ParamState`), generates an image using these values, encodes it to JPEG in memory, stores it in `latest_jpeg`, and paces itself based on `TARGET_FPS`.
 - **Flask App:**
-    - **`/`:** Serves the basic HTML interface.
+    - **`/`:** Serves the basic HTML interface, including the prompt input and parameter sliders. Contains JavaScript to handle slider input and POST updates to `/params`.
     - **`/stream`:** Handles MJPEG streaming via the `_mjpeg` generator function. It yields the `latest_jpeg` data formatted with the correct headers.
-    - **`/prompt`:** Handles POST requests with JSON (`{"prompt": "..."}`), updates the shared `PROMPT` state using a lock, and logs activity.
+    - **`/prompt`:** Handles POST requests with JSON (`{"prompt": "..."}`), updates the shared `PROMPT_STATE` using a lock, and logs activity.
+    - **`/params`:** Handles GET requests to return the current parameters held in `PARAM_STATE`, and POST requests with JSON (`{"num_inference_steps": ..., "guidance_scale": ...}`) to update `PARAM_STATE`.
 - **Background Process:** `start_stream_server.sh` uses `nohup ... &` to run the server persistently in the background, surviving SSH disconnections. Logs are captured in `/workspace/server.log`.
 
 ## 6. 📊 Monitoring & Troubleshooting
@@ -181,6 +184,7 @@
     - `[prompt] Request received` (Attempt to set prompt via UI)
     - `[prompt] Raw data received: ...`
     - `[prompt] => Successfully set to: ...`
+    - `[params] Updated: {'num_inference_steps': ..., 'guidance_scale': ...}` (Successful parameter update via slider)
     - **Any Python Tracebacks:** These indicate crashes. Read the error message carefully.
 
 ### Local Tunnel Issues (`tunnel_to_stream.sh`)
@@ -195,8 +199,10 @@
     - **Network Tab:**
         - Inspect the request to `/stream`. Status should be 200. Headers should include `Content-Type: multipart/x-mixed-replace`. Size should continuously increase. If it finishes quickly or has a different status (e.g., 500), the server-side stream handler has a problem (check `server.log`).
         - Inspect the request to `/prompt` after clicking "Set Prompt". Status should be 200. Check Request Payload (is the JSON correct?) and Response (should be `{"status":"ok", ...}`). A 500 status indicates a server-side crash in the `/prompt` handler (check `server.log` for the traceback).
+        - Inspect the requests to `/params` (POST) when moving sliders. Status should be 200. Check Request Payload and Response. A 500 status indicates a server-side crash in the `/params` handler (check `server.log`).
 - **Static Image:** Usually means the browser isn't handling the MJPEG stream correctly, or the server stopped sending frames after the first one (check `server.log` for errors in the `_mjpeg` loop or generator thread). Ensure the `Content-Type` header is correct in the Network tab.
 - **Connection Reset:** Browser connected, but the server closed the connection abruptly. Often caused by a server crash when handling the specific request (check `server.log`).
+- **Sliders not working:** Check the browser's JavaScript console (F12 -> Console) for errors related to slider event handlers or the `fetch` calls to `/params`. Verify the `/params` endpoint is reachable and responding correctly (check Network tab and `server.log`).
 
 ### GPU Monitoring (Remote)
 - Useful to check if the model is utilizing the GPU.
@@ -219,10 +225,10 @@
 
 ## 8. 📝 Summary & Key Learnings
 
-- **Architecture:** Flask + MJPEG streaming is effective for real-time viewing. Separating generation into a thread allows Flask to remain responsive.
+- **Architecture:** Flask + MJPEG streaming is effective for real-time viewing. Separating generation into a thread allows Flask to remain responsive. Shared state objects (`PromptState`, `ParamState`) with locks allow safe communication between Flask routes and the generator thread.
 - **Dependencies:** Precise package versions (PyTorch, CUDA, NumPy, diffusers, xformers) are critical for compatibility. Use the versions in `setup.sh`.
 - **Backgrounding:** `nohup ... > logfile 2>&1 &` is a reliable way to run the server persistently on VAST.ai, especially when `tmux` causes issues.
-- **Debugging:** Check logs systematically: `server.log` (remote) for server errors, tunnel script output (local) for connection issues, and browser developer tools (local) for client-side/network request problems.
+- **Debugging:** Check logs systematically: `server.log` (remote) for server errors, tunnel script output (local) for connection issues, and browser developer tools (local) for client-side/network request problems (Console and Network tabs are key).
 - **SSH Tunneling:** Essential for accessing the server running on the private instance network from your local machine. Ensure the local and remote ports are correctly mapped.
 
 ## 9. 🚫 Troubleshooting
@@ -306,6 +312,6 @@ vastai destroy instance $INSTANCE_ID
 - ✅ Enable xformers for memory-efficient attention
 - ✅ Compile UNet with PyTorch 2.0+
 - ✅ Use half precision throughout
-- ✅ For SD-Turbo, use single inference step with guidance scale of 0.0
+- ✅ For SD-Turbo, use single inference step with guidance scale of 0.0 (as a fast starting point, now adjustable via UI)
 - ✅ Package versions carefully matched for compatibility
 - ✅ Create automation scripts for key workflows 

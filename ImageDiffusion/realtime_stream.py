@@ -7,6 +7,8 @@ Run this on the VAST.ai instance:
 Exposes:
     GET  /stream   – multipart MJPEG at target_fps
     POST /prompt   – JSON {"prompt": "new text"}
+    GET  /params   – JSON {"num_inference_steps": int, "guidance_scale": float}
+    POST /params   – JSON {"num_inference_steps": int, "guidance_scale": float}
 """
 import io, time, threading, datetime
 from flask import Flask, Response, request, jsonify
@@ -22,6 +24,10 @@ INITIAL_PROMPT = "cat" # Default prompt for first generation
 MODEL_ID = "stabilityai/sd-turbo"
 SERVER_PORT = 8000 # Port the Flask server will run on
 
+# NEW DEFAULT GENERATION PARAMS
+DEFAULT_NUM_INFERENCE_STEPS = 1  # SD-Turbo was designed for 1–4 steps. Higher will be slower.
+DEFAULT_GUIDANCE_SCALE = 0.0     # 0 = classifier-free guidance off ; typical range 0-10.
+
 # ───────────────────────────────────────────────────────────────
 #  Model Setup
 # ───────────────────────────────────────────────────────────────
@@ -35,9 +41,8 @@ pipe.unet = torch.compile(pipe.unet, mode="max-autotune")
 print("[init] model loaded and compiled")
 
 # ───────────────────────────────────────────────────────────────
-#  Shared state for prompt & latest JPEG
+#  Shared state for prompt, params & latest JPEG
 # ───────────────────────────────────────────────────────────────
-# Simplify back to just prompt state
 class PromptState:
     def __init__(self, initial_prompt):
         from threading import Lock
@@ -54,8 +59,31 @@ class PromptState:
             print(f"[PromptState] Prompt updated to: {self._p}")
             return self._p
 
-# Initialize state
+# NEW: thread-safe parameter container ---------------------------------------
+class ParamState:
+    """Thread-safe holder for generation parameters that may change in real-time."""
+    def __init__(self, num_inference_steps:int, guidance_scale:float):
+        from threading import Lock
+        self._lock = Lock()
+        self._params = {
+            "num_inference_steps": int(num_inference_steps),
+            "guidance_scale": float(guidance_scale),
+        }
+    def get(self):
+        """Return a shallow copy of the current param dict."""
+        with self._lock:
+            return dict(self._params)
+    def update(self, **kwargs):
+        """Update one or more parameters atomically. Unsupported keys are ignored."""
+        with self._lock:
+            for k, v in kwargs.items():
+                if k in self._params:
+                    self._params[k] = v
+            return dict(self._params)
+
+# Initialize states
 PROMPT_STATE = PromptState(INITIAL_PROMPT)
+PARAM_STATE  = ParamState(DEFAULT_NUM_INFERENCE_STEPS, DEFAULT_GUIDANCE_SCALE)
 latest_jpeg: bytes = b''
 
 # ───────────────────────────────────────────────────────────────
@@ -71,6 +99,7 @@ def _gen_loop():
         # --- Get prompt --- START
         try:
             prompt_gen = PROMPT_STATE.get()
+            params = PARAM_STATE.get()
         except Exception as e:
              print(f"[gen] Error getting prompt: {e}")
              time.sleep(0.5)
@@ -82,9 +111,9 @@ def _gen_loop():
             # --- Generate the image using hardcoded params --- START
             image = pipe(
                 prompt=prompt_gen,
-                num_inference_steps=1,      # Hardcoded
-                guidance_scale=0.0,     # Hardcoded
-                generator=None              # Hardcoded (random)
+                num_inference_steps=int(params.get("num_inference_steps", 1)),
+                guidance_scale=float(params.get("guidance_scale", 0.0)),
+                generator=None  # TODO: add seed control later
             ).images[0]
             # --- Generate the image using hardcoded params --- END
             t_pipe_done = time.time()
@@ -147,6 +176,17 @@ def set_prompt():
     actual_prompt = PROMPT_STATE.set(new_prompt)
     print(f"[prompt] => Set to: {actual_prompt}")
     return jsonify({'status': 'ok', 'prompt': actual_prompt})
+
+@app.route('/params', methods=['GET', 'POST'])
+def handle_params():
+    """GET → current params; POST → update params (subset allowed)."""
+    if request.method == 'GET':
+        return jsonify(PARAM_STATE.get())
+
+    data = request.get_json(force=True, silent=True) or {}
+    updated = PARAM_STATE.update(**data)
+    print(f"[params] Updated: {updated}")
+    return jsonify(updated)
 
 @app.route('/')
 def index():
@@ -291,10 +331,52 @@ def index():
       <input id="promptBox" type="text" placeholder="Enter prompt..." />
       <button onclick="updatePrompt()">Set</button>
     </div>
-    <!-- Removed parameter controls section -->
+
+    <!-- Parameter sliders -->
+    <div class="controls" style="flex-direction:column; align-items:stretch;">
+      <label style="color:var(--label-color);">Steps: <span id="stepsVal">{DEFAULT_NUM_INFERENCE_STEPS}</span></label>
+      <input type="range" id="stepsSlider" min="1" max="8" value="{DEFAULT_NUM_INFERENCE_STEPS}" step="1" oninput="stepsVal.textContent=this.value; queueParamUpdate();">
+
+      <label style="color:var(--label-color);">Guidance Scale: <span id="guidanceVal">{DEFAULT_GUIDANCE_SCALE}</span></label>
+      <input type="range" id="guidanceSlider" min="0" max="10" value="{DEFAULT_GUIDANCE_SCALE}" step="0.1" oninput="guidanceVal.textContent=this.value; queueParamUpdate();">
+    </div>
   </div>
   <script>
-    // Removed paramUpdateTimeout, updateSliderLabel, updateParamsDebounced, updateParams functions
+    // --- Parameter update helpers ---
+    let paramUpdateTimeout;
+    function queueParamUpdate(){{
+        clearTimeout(paramUpdateTimeout);
+        paramUpdateTimeout = setTimeout(updateParams, 200);
+    }}
+
+    async function updateParams(){{
+        const steps = +document.getElementById('stepsSlider').value;
+        const guidance = +document.getElementById('guidanceSlider').value;
+        try{{
+            await fetch('/params', {{
+                method: 'POST',
+                headers: {{'Content-Type':'application/json'}},
+                body: JSON.stringify({{num_inference_steps: steps, guidance_scale: guidance}})
+            }});
+        }}catch(e){{console.error('Failed to update params', e);}}
+    }}
+
+    // Pull current params on load so sliders reflect server state
+    document.addEventListener('DOMContentLoaded', async ()=>{{
+        try{{
+            const res = await fetch('/params');
+            if(!res.ok) throw new Error('HTTP '+res.status);
+            const p = await res.json();
+            if(p.num_inference_steps !== undefined){{
+                document.getElementById('stepsSlider').value = p.num_inference_steps;
+                document.getElementById('stepsVal').textContent = p.num_inference_steps;
+            }}
+            if(p.guidance_scale !== undefined){{
+                document.getElementById('guidanceSlider').value = p.guidance_scale;
+                document.getElementById('guidanceVal').textContent = p.guidance_scale;
+            }}
+        }}catch(e){{console.warn('Could not fetch initial params', e);}}
+    }});
 
     async function updatePrompt() {{
       const promptInput = document.getElementById('promptBox');
@@ -311,7 +393,7 @@ def index():
         }});
         if (!res.ok) {{
             const errorData = await res.json();
-            throw new Error(errorData.error || `HTTP error! status: ${{'{'}res.status{'}'}}`);
+            throw new Error(errorData.error || 'HTTP error! status: ' + res.status);
         }}
         // Optional: Clear input on success
         // promptInput.value = ''; 
@@ -329,8 +411,6 @@ def index():
             updatePrompt();
         }}
     }});
-
-    // Removed DOMContentLoaded listener for sliders
   </script>
 </body>
 </html>'''

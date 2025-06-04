@@ -1,0 +1,3 @@
+# Ignore local configuration files
+ssh_*.json
+*.env

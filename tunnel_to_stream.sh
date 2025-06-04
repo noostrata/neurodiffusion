@@ -1,11 +1,13 @@
 #!/bin/bash
 # Creates an SSH tunnel to access the streaming server
 
-SSH_PORT=50267
-SSH_HOST="193.69.10.108"
-SSH_USER="root"
-SSH_KEY="$HOME/.ssh/id_rsa"
-PASSPHRASE="1337"
+SSH_PORT="${SSH_PORT:?Set SSH_PORT}"
+SSH_HOST="${SSH_HOST:?Set SSH_HOST}"
+SSH_USER="${SSH_USER:-root}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_rsa}"
+PASSPHRASE="${PASSPHRASE:?Set PASSPHRASE}"
+LOCAL_PORT="${LOCAL_PORT:-8888}"
+STREAM_PORT="${STREAM_PORT:-8000}"
 
 # Setup temporary SSH config & askpass
 SSH_CONFIG=$(mktemp)
@@ -37,11 +39,11 @@ fi
 ssh-add "$SSH_KEY" </dev/null 2>/dev/null
 
 echo "Starting SSH tunnel..."
-echo "Browse to http://localhost:8888/ to view the stream"
+echo "Browse to http://localhost:${LOCAL_PORT}/ to view the stream"
 echo "Press Ctrl+C to stop the tunnel"
 
 # Create the tunnel in the background
-ssh -F "$SSH_CONFIG" -N -L 8888:127.0.0.1:8000 vastai &
+ssh -F "$SSH_CONFIG" -N -L ${LOCAL_PORT}:127.0.0.1:${STREAM_PORT} vastai &
 SSH_PID=$!
 
 # Function to kill the SSH process

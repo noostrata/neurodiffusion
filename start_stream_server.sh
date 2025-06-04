@@ -4,11 +4,11 @@
 ##########################
 # SSH connection details #
 ##########################
-SSH_PORT=50267
-SSH_HOST="193.69.10.108"
-SSH_USER="root"
-SSH_KEY="$HOME/.ssh/id_rsa"
-PASSPHRASE="1337"
+SSH_PORT="${SSH_PORT:?Set SSH_PORT}"
+SSH_HOST="${SSH_HOST:?Set SSH_HOST}"
+SSH_USER="${SSH_USER:-root}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_rsa}"
+PASSPHRASE="${PASSPHRASE:?Set PASSPHRASE}"
 
 ############################################
 # Setup temporary SSH config & askpass file #

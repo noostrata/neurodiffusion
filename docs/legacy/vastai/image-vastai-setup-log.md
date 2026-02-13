@@ -1,4 +1,6 @@
-# Comprehensive VAST.ai Guide for SD-Turbo Real-time Streaming
+# (LEGACY) VAST.ai Guide for SD-Turbo Real-time Streaming
+
+This document is kept for historical reference. The repo is now structured around Prime Intellect pods.
 
 ## 1. 🚀 Quick Reference & Overview
 
@@ -10,7 +12,7 @@
 - **Performance**: 50-80+ FPS image generation (SD-Turbo 512x512). Stream FPS depends on network/browser.
 - **Storage**: Minimum 30GB recommended (OS, CUDA toolkit, Python env, model cache).
 - **Instance ID Example**: 19768221
-- **Connection Example**: `ssh -p 50267 root@193.69.10.108` (Use details from your specific instance)
+- **Connection Example**: `ssh -p <PORT> root@<HOST_IP>` (Use details from your specific instance)
 
 ### Core Application: Real-time MJPEG Stream with Prompt & Parameter Control
 - **Goal**: Generate images continuously using SD-Turbo on the VAST.ai GPU and stream them in real-time to a web browser, allowing the user to change the generation prompt and key parameters (like steps and guidance) dynamically.
@@ -29,7 +31,7 @@
 - `setup.sh`: One-time setup script to install dependencies on the VAST.ai instance.
 - `start_stream_server.sh`: Local script to copy `realtime_stream.py` to the remote instance and start it as a background process using `nohup`.
 - `tunnel_to_stream.sh`: Local script to establish the SSH tunnel for viewing the stream.
-- `vastai_setup_log.txt`: This documentation file.
+- `docs/legacy/vastai/image-vastai-setup-log.md`: This documentation file.
 
 ### Prerequisites (Local Machine)
 - SSH client and key pair configured (`~/.ssh/id_rsa` is typical).
@@ -63,7 +65,7 @@
     # Add your key (enter passphrase once if needed)
     ssh-add ~/.ssh/id_rsa
     ```
-- The provided scripts (`start_stream_server.sh`, `tunnel_to_stream.sh`) include logic to handle SSH keys and passphrases using `SSH_ASKPASS` and temporary config files, simplifying automation. Ensure the `PASSPHRASE` variable in those scripts matches your SSH key passphrase if it has one (leave blank if not).
+- The provided scripts (`ImageDiffusion/start_stream_server.sh`, `ImageDiffusion/tunnel_to_stream.sh`) read connection info from `config/vast.env` (copy from `config/vast.env.example`). Prefer using `ssh-agent` locally instead of hardcoding passphrases in scripts.
 
 ### SSH Configuration Optimizations (Local `~/.ssh/config`)
 - Recommended to prevent timeouts during long connections:
@@ -101,7 +103,7 @@
 
 ### Storing Connection Info (Recommended)
 - Update the `SSH_HOST` and `SSH_PORT` variables at the top of `start_stream_server.sh` and `tunnel_to_stream.sh` with the details of your current instance.
-- Alternatively, create a `ssh_config.json` (like `ssh_19768221.json`) and modify the scripts to read from it (this requires adding JSON parsing tools like `jq` or Python parsing to the scripts).
+- Alternatively, store instance details locally in `config/instances/` (ignored by git) and keep the repo itself shareable.
 
 ### Instance Lifecycle
 - **Connect:** `ssh -p <PORT> root@<HOST_IP>`
@@ -190,7 +192,7 @@
 ### Local Tunnel Issues (`tunnel_to_stream.sh`)
 - **Check Output:** Always check the terminal where the tunnel script is running for errors immediately after starting it.
 - **`Address already in use`:** Another process is using local port 8888. Find and kill it (`lsof -i :8888`, `kill <PID>`) or change the local port in the script (e.g., `-L 9999:127.0.0.1:8000`).
-- **Authentication Errors:** Check SSH key setup (`ssh-add`) and the `PASSPHRASE` variable in the script.
+- **Authentication Errors:** Check SSH key setup (`ssh-add`) and that your `config/vast.env` values are correct.
 - **`Connection refused` (when accessing `localhost:8888`):** The tunnel likely isn't running or established correctly, or the remote server isn't listening on port 8000 (check `server.log`).
 
 ### Browser Issues (`http://localhost:8888/`)
@@ -314,4 +316,4 @@ vastai destroy instance $INSTANCE_ID
 - ✅ Use half precision throughout
 - ✅ For SD-Turbo, use single inference step with guidance scale of 0.0 (as a fast starting point, now adjustable via UI)
 - ✅ Package versions carefully matched for compatibility
-- ✅ Create automation scripts for key workflows 
+- ✅ Create automation scripts for key workflows

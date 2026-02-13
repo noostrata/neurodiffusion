@@ -1,0 +1,34 @@
+# Secrets / instance configs (do not commit)
+ssh_*.json
+**/ssh_*.json
+config/prime.env
+config/prime.env.bak*
+config/vast.env
+config/instances/
+
+# Local notes
+# Remote clones / downloaded weights (keep repo light)
+VideoDiffusion/MAGI-1/
+
+# Logs
+*.log
+**/*.log
+
+# Outputs / artifacts
+*.mp4
+*.png
+*.jpg
+*.jpeg
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# OS/editor
+.DS_Store
+*.swp

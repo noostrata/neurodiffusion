@@ -1,51 +1,50 @@
-#!/bin/bash
-# Creates an SSH tunnel to access the Jupyter notebook server
+#!/usr/bin/env bash
+# Usage: bash ImageDiffusion/jupyter_tunnel.sh
+#
+# Creates an SSH local port-forward to the remote Jupyter server.
 
-SSH_PORT=50267
-SSH_HOST="193.69.10.108"
-SSH_USER="root"
-SSH_KEY="$HOME/.ssh/id_rsa"
-PASSPHRASE="1337"
-REMOTE_JUPYTER_PORT=8080
-LOCAL_PORT=9999
-JUPYTER_TOKEN="457b2b26ba43a856ac5baf492c918a8d1ad8dec29873b9cab762204014235020"
+set -euo pipefail
 
-# Setup temporary SSH config & askpass
-SSH_CONFIG=$(mktemp)
-cat > "$SSH_CONFIG" << EOL
-Host vastai
-    HostName $SSH_HOST
-    Port $SSH_PORT
-    User $SSH_USER
-    IdentityFile $SSH_KEY
-    StrictHostKeyChecking no
-    PasswordAuthentication no
-EOL
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
-ASKPASS_SCRIPT=$(mktemp)
-cat > "$ASKPASS_SCRIPT" << EOL
-#!/bin/bash
-echo "$PASSPHRASE"
-EOL
-chmod +x "$ASKPASS_SCRIPT"
-
-export SSH_ASKPASS="$ASKPASS_SCRIPT"
-export DISPLAY=:0
-export SSH_ASKPASS_REQUIRE=force
-
-# Start ssh-agent & add key
-if ! pgrep -u "$USER" ssh-agent >/dev/null; then
-  eval $(ssh-agent -s)
+CONFIG_FILE="${PRIME_CONFIG_FILE:-${REPO_ROOT}/config/prime.env}"
+if [[ -f "${CONFIG_FILE}" ]]; then
+  # shellcheck source=/dev/null
+  source "${CONFIG_FILE}"
 fi
-ssh-add "$SSH_KEY" </dev/null 2>/dev/null
 
-echo "Starting SSH tunnel to Jupyter..."
-echo "Open this URL in your browser:"
-echo "http://localhost:${LOCAL_PORT}/lab?token=${JUPYTER_TOKEN}"
-echo "Press Ctrl+C to stop the tunnel"
+if ! SSH_ENV="$("${REPO_ROOT}/scripts/prime/resolve_ssh.sh")"; then
+  echo "ERROR: failed to resolve pod SSH info (is the pod ACTIVE?)" 1>&2
+  exit 1
+fi
+eval "${SSH_ENV}"
 
-# Create the tunnel (local:JUPYTER_PORT -> remote:JUPYTER_PORT)
-ssh -F "$SSH_CONFIG" -N -L ${LOCAL_PORT}:127.0.0.1:${REMOTE_JUPYTER_PORT} vastai
+: "${PRIME_SSH_KEY_PATH:=${HOME}/.ssh/id_rsa}"
+: "${PRIME_STRICT_HOST_KEY_CHECKING:=accept-new}"
+: "${JUPYTER_REMOTE_PORT:=8080}"
+: "${JUPYTER_LOCAL_PORT:=9999}"
 
-# Cleanup
-rm -f "$SSH_CONFIG" "$ASKPASS_SCRIPT" 
+if [[ ! -f "${PRIME_SSH_KEY_PATH}" ]]; then
+  echo "ERROR: SSH key not found at PRIME_SSH_KEY_PATH=${PRIME_SSH_KEY_PATH}" 1>&2
+  exit 1
+fi
+
+REMOTE="${PRIME_SSH_USER}@${PRIME_SSH_HOST}"
+
+SSH_OPTS=(
+  -p "${PRIME_SSH_PORT}"
+  -i "${PRIME_SSH_KEY_PATH}"
+  -o "StrictHostKeyChecking=${PRIME_STRICT_HOST_KEY_CHECKING}"
+  -o "PasswordAuthentication=no"
+)
+
+if [[ -n "${JUPYTER_TOKEN:-}" ]]; then
+  echo "[local] open: http://localhost:${JUPYTER_LOCAL_PORT}/lab?token=${JUPYTER_TOKEN}"
+else
+  echo "[local] open: http://localhost:${JUPYTER_LOCAL_PORT}/"
+  echo "[local] (set JUPYTER_TOKEN in config/prime.env if you want the full /lab?token=... URL printed)"
+fi
+echo "[local] press Ctrl+C to stop"
+
+ssh "${SSH_OPTS[@]}" -N -L "${JUPYTER_LOCAL_PORT}:127.0.0.1:${JUPYTER_REMOTE_PORT}" "${REMOTE}"

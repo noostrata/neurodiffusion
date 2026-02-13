@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# Usage: bash ImageDiffusion/start_stream_server.sh
+# Usage: bash ImageDiffusion/remote_setup.sh
 #
-# Prime Intellect oriented workflow:
-# - Resolve pod SSH details via `prime pods status <POD_ID> -o json`
-# - scp the latest server to the pod
-# - start it in the background with logs in the remote workdir
+# Copies setup files to the pod and runs the one-time dependency install remotely.
 
 set -euo pipefail
 
@@ -26,7 +23,6 @@ eval "${SSH_ENV}"
 : "${PRIME_SSH_KEY_PATH:=${HOME}/.ssh/id_rsa}"
 : "${PRIME_STRICT_HOST_KEY_CHECKING:=accept-new}"
 : "${PRIME_REMOTE_WORKDIR:=~/neurodiffusion}"
-: "${IMAGE_REMOTE_PORT:=8000}"
 
 if [[ ! -f "${PRIME_SSH_KEY_PATH}" ]]; then
   echo "ERROR: SSH key not found at PRIME_SSH_KEY_PATH=${PRIME_SSH_KEY_PATH}" 1>&2
@@ -52,20 +48,11 @@ SCP_OPTS=(
 echo "[remote] ensuring workdir exists: ${PRIME_REMOTE_WORKDIR}"
 ssh "${SSH_OPTS[@]}" "${REMOTE}" "mkdir -p ${PRIME_REMOTE_WORKDIR}"
 
-echo "[local] copying realtime_stream.py -> ${REMOTE}:${PRIME_REMOTE_WORKDIR}/"
+echo "[local] copying setup files -> ${REMOTE}:${PRIME_REMOTE_WORKDIR}/"
 scp "${SCP_OPTS[@]}" \
-  "${SCRIPT_DIR}/realtime_stream.py" \
-  "${REMOTE}:${PRIME_REMOTE_WORKDIR}/realtime_stream.py"
+  "${SCRIPT_DIR}/setup.sh" \
+  "${SCRIPT_DIR}/requirements.txt" \
+  "${REMOTE}:${PRIME_REMOTE_WORKDIR}/"
 
-echo "[remote] stopping previous server (if any)"
-# Use a regex that matches the target process but not this pkill invocation itself.
-ssh "${SSH_OPTS[@]}" "${REMOTE}" "pkill -f '[r]ealtime_stream.py' || true"
-
-echo "[remote] starting server (logs: ${PRIME_REMOTE_WORKDIR}/server.log)"
-ssh "${SSH_OPTS[@]}" "${REMOTE}" \
-  "cd ${PRIME_REMOTE_WORKDIR} && PY='.venv/bin/python' && if [ -x \"\$PY\" ]; then nohup env SERVER_PORT='${IMAGE_REMOTE_PORT}' \"\$PY\" -u realtime_stream.py > server.log 2>&1 & else nohup env SERVER_PORT='${IMAGE_REMOTE_PORT}' python3 -u realtime_stream.py > server.log 2>&1 & fi"
-
-sleep 2
-
-echo "[ok] server started on remote port ${IMAGE_REMOTE_PORT}"
-echo "[next] run: bash ImageDiffusion/tunnel_to_stream.sh"
+echo "[remote] running setup (logs will print in this terminal)"
+ssh "${SSH_OPTS[@]}" "${REMOTE}" "cd ${PRIME_REMOTE_WORKDIR} && bash setup.sh"

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Realtime SD-Turbo stream server with prompt hot-swap.
 
-Run this on the VAST.ai instance:
-    python3 /workspace/realtime_stream.py
+Run this on the remote GPU pod:
+    python3 realtime_stream.py
 
 Exposes:
     GET  /stream   – multipart MJPEG at target_fps
@@ -10,7 +10,7 @@ Exposes:
     GET  /params   – JSON {"num_inference_steps": int, "guidance_scale": float}
     POST /params   – JSON {"num_inference_steps": int, "guidance_scale": float}
 """
-import io, time, threading, datetime
+import io, os, time, threading, datetime
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
 import torch
@@ -19,14 +19,14 @@ from diffusers import AutoPipelineForText2Image
 # ───────────────────────────────────────────────────────────────
 #  Config
 # ───────────────────────────────────────────────────────────────
-TARGET_FPS = 30
-INITIAL_PROMPT = "cat" # Default prompt for first generation
-MODEL_ID = "stabilityai/sd-turbo"
-SERVER_PORT = 8000 # Port the Flask server will run on
+TARGET_FPS = int(os.getenv("TARGET_FPS", "30"))
+INITIAL_PROMPT = os.getenv("INITIAL_PROMPT", "cat")  # Default prompt for first generation
+MODEL_ID = os.getenv("MODEL_ID", "stabilityai/sd-turbo")
+SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))  # Port the Flask server will run on
 
 # NEW DEFAULT GENERATION PARAMS
-DEFAULT_NUM_INFERENCE_STEPS = 1  # SD-Turbo was designed for 1–4 steps. Higher will be slower.
-DEFAULT_GUIDANCE_SCALE = 0.0     # 0 = classifier-free guidance off ; typical range 0-10.
+DEFAULT_NUM_INFERENCE_STEPS = int(os.getenv("NUM_INFERENCE_STEPS", "1"))
+DEFAULT_GUIDANCE_SCALE = float(os.getenv("GUIDANCE_SCALE", "0.0"))
 
 # ───────────────────────────────────────────────────────────────
 #  Model Setup
@@ -36,9 +36,20 @@ pipe = AutoPipelineForText2Image.from_pretrained(
     MODEL_ID,
     torch_dtype=torch.float16,
 ).to("cuda")
-pipe.enable_xformers_memory_efficient_attention()
-pipe.unet = torch.compile(pipe.unet, mode="max-autotune")
-print("[init] model loaded and compiled")
+try:
+    pipe.enable_xformers_memory_efficient_attention()
+except Exception as e:
+    print(f"[init] xformers not enabled: {e}")
+
+compiled = False
+if os.getenv("TORCH_COMPILE", "1") not in ("0", "false", "False", "no", "NO"):
+    try:
+        pipe.unet = torch.compile(pipe.unet, mode="max-autotune")
+        compiled = True
+    except Exception as e:
+        print(f"[init] torch.compile disabled (failed): {e}")
+
+print(f"[init] model loaded{' (torch.compile enabled)' if compiled else ''}")
 
 # ───────────────────────────────────────────────────────────────
 #  Shared state for prompt, params & latest JPEG
@@ -417,4 +428,4 @@ def index():
 
 if __name__ == '__main__':
     print(f"[flask] running on 0.0.0.0:{SERVER_PORT}")
-    app.run(host='0.0.0.0', port=SERVER_PORT, threaded=True) 
+    app.run(host='0.0.0.0', port=SERVER_PORT, threaded=True)

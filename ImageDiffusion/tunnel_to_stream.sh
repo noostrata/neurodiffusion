@@ -1,62 +1,45 @@
-#!/bin/bash
-# Creates an SSH tunnel to access the streaming server
+#!/usr/bin/env bash
+# Usage: bash ImageDiffusion/tunnel_to_stream.sh
+#
+# Creates an SSH local port-forward so you can open the stream locally.
 
-SSH_PORT=50267
-SSH_HOST="193.69.10.108"
-SSH_USER="root"
-SSH_KEY="$HOME/.ssh/id_rsa"
-PASSPHRASE="1337"
+set -euo pipefail
 
-# Setup temporary SSH config & askpass
-SSH_CONFIG=$(mktemp)
-cat > "$SSH_CONFIG" << EOL
-Host vastai
-    HostName $SSH_HOST
-    Port $SSH_PORT
-    User $SSH_USER
-    IdentityFile $SSH_KEY
-    StrictHostKeyChecking no
-    PasswordAuthentication no
-EOL
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
-ASKPASS_SCRIPT=$(mktemp)
-cat > "$ASKPASS_SCRIPT" << EOL
-#!/bin/bash
-echo "$PASSPHRASE"
-EOL
-chmod +x "$ASKPASS_SCRIPT"
-
-export SSH_ASKPASS="$ASKPASS_SCRIPT"
-export DISPLAY=:0
-export SSH_ASKPASS_REQUIRE=force
-
-# Start ssh-agent & add key
-if ! pgrep -u "$USER" ssh-agent >/dev/null; then
-  eval $(ssh-agent -s)
+CONFIG_FILE="${PRIME_CONFIG_FILE:-${REPO_ROOT}/config/prime.env}"
+if [[ -f "${CONFIG_FILE}" ]]; then
+  # shellcheck source=/dev/null
+  source "${CONFIG_FILE}"
 fi
-ssh-add "$SSH_KEY" </dev/null 2>/dev/null
 
-echo "Starting SSH tunnel..."
-echo "Browse to http://localhost:8888/ to view the stream"
-echo "Press Ctrl+C to stop the tunnel"
+if ! SSH_ENV="$("${REPO_ROOT}/scripts/prime/resolve_ssh.sh")"; then
+  echo "ERROR: failed to resolve pod SSH info (is the pod ACTIVE?)" 1>&2
+  exit 1
+fi
+eval "${SSH_ENV}"
 
-# Create the tunnel in the background
-ssh -F "$SSH_CONFIG" -N -L 8888:127.0.0.1:8000 vastai &
-SSH_PID=$!
+: "${PRIME_SSH_KEY_PATH:=${HOME}/.ssh/id_rsa}"
+: "${PRIME_STRICT_HOST_KEY_CHECKING:=accept-new}"
+: "${IMAGE_REMOTE_PORT:=8000}"
+: "${IMAGE_LOCAL_PORT:=8888}"
 
-# Function to kill the SSH process
-cleanup() {
-    echo "Stopping SSH tunnel (PID: $SSH_PID)..."
-    kill $SSH_PID > /dev/null 2>&1
-    wait $SSH_PID 2>/dev/null # Wait for it to actually terminate
-    rm -f "$SSH_CONFIG" "$ASKPASS_SCRIPT"
-    echo "Tunnel stopped."
-}
+if [[ ! -f "${PRIME_SSH_KEY_PATH}" ]]; then
+  echo "ERROR: SSH key not found at PRIME_SSH_KEY_PATH=${PRIME_SSH_KEY_PATH}" 1>&2
+  exit 1
+fi
 
-# Trap EXIT and INT signals to run the cleanup function
-trap cleanup EXIT INT
+REMOTE="${PRIME_SSH_USER}@${PRIME_SSH_HOST}"
 
-# Wait for the SSH process to finish (or be killed by the trap)
-wait $SSH_PID
+SSH_OPTS=(
+  -p "${PRIME_SSH_PORT}"
+  -i "${PRIME_SSH_KEY_PATH}"
+  -o "StrictHostKeyChecking=${PRIME_STRICT_HOST_KEY_CHECKING}"
+  -o "PasswordAuthentication=no"
+)
 
-# Cleanup is now handled by the trap, so remove the explicit cleanup call here 
+echo "[local] starting tunnel: http://localhost:${IMAGE_LOCAL_PORT}/ -> ${REMOTE}:localhost:${IMAGE_REMOTE_PORT}"
+echo "[local] press Ctrl+C to stop"
+
+ssh "${SSH_OPTS[@]}" -N -L "${IMAGE_LOCAL_PORT}:127.0.0.1:${IMAGE_REMOTE_PORT}" "${REMOTE}"

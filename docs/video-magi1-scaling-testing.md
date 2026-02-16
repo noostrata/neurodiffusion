@@ -1,88 +1,189 @@
 # MAGI-1 Scaling (Testing Phase)
 
-This repo supports **chunk-wise prompt hot-swap** (24-frame chunks). This doc is a pragmatic test design to:
+_Last validated: 2026-02-16_
 
-- make MAGI chunk generation faster (lower `TPOC`)
-- verify prompt changes apply between chunks (not per-frame)
-- keep costs bounded (short tests, stop pods immediately)
+This repository supports chunk-wise prompt hot-swap (24-frame chunks). This guide is a strict testing plan to:
 
-Canonical runtime behavior is documented in `docs/video-magi1-streaming.md`.
+- reduce chunk latency (`TPOC`)
+- verify prompt changes apply on chunk boundaries
+- keep spend predictable during scaling experiments
 
-## Metrics (what we measure)
+Canonical runtime behavior remains in `docs/video-magi1-streaming.md`.
 
-- **TTFC** (Time To First Chunk): time until the first 24-frame chunk is produced.
-- **TPOC** (Time Per Output Chunk): time to produce each subsequent 24-frame chunk.
-- **Prompt hot-swap latency**: time from `POST /prompt` until `/stats` reports a chunk generated with the new prompt.
+## Core metrics and acceptance targets
 
-Real-time playback at 24 fps needs `TPOC <= 1s` in steady state.
+- **TTFC**: Time To First Chunk
+- **TPOC**: Time Per Output Chunk (steady-state)
+- **Prompt hot-swap latency**: `POST /prompt` to first chunk generated with the new prompt
 
-## Test matrix (what we vary)
+Real-time playback at 24 fps requires:
 
-Vary one axis at a time:
+- chunk size fixed at 24 frames -> 1 chunk = 1 second
+- steady-state target: `TPOC <= 1.0s`
 
-- Hardware: GPU type + count (start small)
-- Inference config: resolution + steps + quant/fp8
-- Stream buffering: `QUEUE_LEN`, `DROP_OLD_ON_PROMPT`, `JPEG_QUALITY`
+Interactive prompt control target:
 
-## Baseline: prompt-reactive stream setup
+- prompt update visible by the very next chunk boundary (no deep queue backlog)
 
-On the pod (inside the MAGI env):
+## Preflight checklist (before scaling)
+
+1. Pod is healthy:
+   - `prime pods status <POD_ID> -o json`
+2. Setup completed:
+   - `cd /root/neurodiffusion/VideoDiffusion && bash setup.sh`
+3. Weights aligned with config:
+   - quant config -> quant weights
+   - non-quant config -> non-quant weights
+4. Geometry is valid:
+   - `video_size_h % 16 == 0`
+   - `video_size_w % 16 == 0`
+
+## Cold-start minimization (before any benchmark)
+
+To keep scaling measurements clean (and cheaper), minimize setup overhead first:
+
+1. Prefer Prime custom image/template with MAGI deps preinstalled.
+2. Restore wheel/env cache from Cloudflare R2 (`docs/cloudflare-r2.md`).
+3. Run a short warmup chunk before recording `TTFC`/`TPOC`.
+
+Without this, first-run compile/network overhead can dominate timing and hide actual inference scaling behavior.
+
+## Baseline prompt-reactive stream profile
+
+Start with one GPU and a small queue so prompt changes are visible quickly.
 
 ```bash
 cd /root/neurodiffusion/VideoDiffusion
 
-# Keep latency tight: small buffer, drop old frames after prompt change.
+export CUDA_VISIBLE_DEVICES=0
+export MAGI_WINDOW_SIZE=1
 export QUEUE_LEN=96
 export DROP_OLD_ON_PROMPT=1
 export JPEG_QUALITY=75
 
-# Keep hot-swap deterministic: one chunk in flight.
-export MAGI_WINDOW_SIZE=1
+# Optional low-cost compute caps for baseline:
+export MAGI_VIDEO_SIZE_H=384
+export MAGI_VIDEO_SIZE_W=384
+export MAGI_NUM_STEPS=8
+export MAGI_NUM_FRAMES=24
 
-# Optional: lower compute for testing.
-# NOTE: keep H/W divisible by 16 (e.g., 384x384) to avoid shape mismatches.
-# export MAGI_VIDEO_SIZE_H=384
-# export MAGI_VIDEO_SIZE_W=384
-# export MAGI_NUM_STEPS=8
-
-# Use all visible GPUs (single-node).
-export CUDA_VISIBLE_DEVICES=0
-
-python realtime_magi_stream.py
+python realtime_magi_stream.py 2>&1 | tee /tmp/magi_stream.log
 ```
 
-On your local machine (through your SSH tunnel to `localhost:8000`):
+Local benchmark (through SSH tunnel to `localhost:8000`):
 
 ```bash
 python VideoDiffusion/bench_prompt_hot_swap.py --url http://localhost:8000 --rounds 2
 ```
 
-## Scaling in Northern Europe (Prime `eu_north`)
+## Controlled scale matrix
 
-As of 2026-02-13, `eu_north` offered (spot):
+Run in this order. Change one axis at a time.
 
-- 1× H100 80GB (SXM5): ~$0.80/hr
-- 2× H100 80GB (SXM5): ~$1.60/hr
-- 8× RTX4090 24GB (PCIe): ~$4.74/hr
+| Phase | GPUs | Resolution | Steps | Frames | Goal |
+| --- | --- | --- | --- | --- | --- |
+| A | 1 | 384x384 | 8 | 24 | pipeline proof + baseline `TPOC` |
+| B | 1 | 512x512 | 12 | 96 | dynamic multi-chunk quality check |
+| C | 2 | 640x640 | 16 | 192 | complexity/throughput check |
+| D | 4+ | same as C | same | same | only if C misses `TPOC <= 1s` |
 
-Check fresh availability before provisioning:
+### Tier-specific calibration ladder (enforced by `test_scripted_30s.sh`)
+
+Before final 30-second render, run 6-chunk calibration with tier policy:
+
+1. `4.5B` tier ladder: `1 -> 3 -> 4` GPUs
+2. `24B` tier ladder: `4 -> 8` GPUs
+
+Selection rule:
+
+- choose the smallest rung with steady-state `p90 TPOC <= 1.0s`
+- if none pass, fallback to the highest tested rung and mark latency target as unmet
+
+## First-principles GPU estimate
+
+Measure single-GPU steady-state chunk time (`T1`) for your target profile, then estimate:
+
+- `N_required = ceil(T1 / (1.0 * eta))`
+- use `eta=0.70` to `0.85` (parallel efficiency range)
+
+Conservative example (`eta=0.75`):
+
+- `T1=1.6s` -> `N_required=3`
+- `T1=2.4s` -> `N_required=4`
+- `T1=3.8s` -> `N_required=6`
+
+If queue depth keeps growing at `N_required`, test one step higher GPU count.
+
+## Northern Europe pricing snapshot (Prime `eu_north`, 2026-02-16)
+
+Always re-query before create:
 
 ```bash
-prime availability list --gpu-type H100_80GB --regions eu_north
-prime availability list --gpu-type RTX4090_24GB --regions eu_north --gpu-count 8
+prime availability list --gpu-type H100_80GB --regions eu_north -o json
+prime availability list --gpu-type RTX4090_24GB --regions eu_north -o json
 ```
 
-### Recommended scale-up sequence (testing)
+Observed entries:
 
-1. **1× H100 (spot)**: verify setup + measure baseline `TPOC` and hot-swap latency.
-2. **2× H100 (spot)**: rerun the exact same test and compare.
-3. **8× RTX4090** (optional): only if the model/config fits VRAM and you want throughput experiments.
+- 1x H100 80GB Spot: `$0.8015/h`
+- 2x H100 80GB Spot: `$1.603/h`
+- 8x H100 80GB Spot: `$6.412/h`
+- 1x RTX4090 24GB: `$0.6068/h`
 
-If you need 8+ H100 or 24× H100 (paper-scale real-time for 24B), you will likely need a different region/provider offering that topology.
+## Budget planning (`$5` test envelope)
 
-### Multi-GPU note (single node)
+Approximate max runtime from snapshot:
 
-MAGI-1 uses `torch.distributed`. For multi-GPU streaming on a single host, prefer `torchrun`:
+- 1x H100 Spot: `~6.24h`
+- 2x H100 Spot: `~3.12h`
+- 8x H100 Spot: `~46.8m`
+
+Testing-phase rule:
+
+1. Do setup once.
+2. Run short timed experiments (10-20 minutes each).
+3. Terminate pod after each batch.
+
+## Budget guard for scripted 30s (`$15` envelope)
+
+`test_scripted_30s.sh` enforces a hard runtime cap:
+
+- `max_runtime_sec = floor((BUDGET_USD * 0.90 / HOURLY_RATE_USD) * 3600)`
+
+Behavior:
+
+1. A watchdog aborts the run at `max_runtime_sec`.
+2. Run status is set to `BUDGET_ABORT`.
+3. Summary/report artifacts are still written to `VideoDiffusion/.tmp/`.
+
+## Prime-first orchestration entrypoints
+
+Lifecycle runner:
+
+```bash
+bash VideoDiffusion/run_scripted_30s_prime.sh \
+  --mode lifecycle \
+  --tier 4.5b \
+  --budget-usd 15
+```
+
+Matrix runner:
+
+```bash
+bash VideoDiffusion/run_prime_gpu_matrix.sh \
+  --tier 24b \
+  --budget-usd 15 \
+  --slice-usd 3
+```
+
+Matrix reports:
+
+- `VideoDiffusion/.tmp/magi_matrix_<tier>.json`
+- `VideoDiffusion/.tmp/magi_matrix_<tier>.csv`
+
+## Multi-GPU single-node runtime
+
+MAGI uses distributed execution. For stream experiments:
 
 ```bash
 export CUDA_VISIBLE_DEVICES=0,1
@@ -91,17 +192,50 @@ export MAGI_PP_SIZE=1
 torchrun --standalone --nproc_per_node=2 realtime_magi_stream.py
 ```
 
-## Knobs that move `TPOC`
+For one-shot clip generation:
 
-Always prefer reducing compute before buying more GPUs:
+```bash
+VIDEO_MAGE_VISIBLE_DEVICES=0,1 \
+VIDEO_MAGE_NPROC=2 \
+bash ./test_single_chunk.sh
+```
 
-- Reduce resolution (360p/480p vs 720p).
-- Reduce `num_steps` (quality vs speed).
-- Use Hopper-friendly quant/fp8 when available (H100 is SM90).
-- Keep stream encode overhead small (`JPEG_QUALITY`, smaller `QUEUE_LEN`).
+## Knobs that move TPOC fastest
+
+Apply in this order before adding GPUs:
+
+1. Lower `num_steps`
+2. Lower resolution
+3. Keep `MAGI_WINDOW_SIZE=1` for prompt-reactive behavior
+4. Use fp8/quant only when hardware + config pairing is stable
+5. Reduce stream encode pressure (`JPEG_QUALITY`, queue size)
+
+## Data collection and decision rule
+
+Use stream logs to extract chunk times:
+
+```bash
+rg -n "\\[producer\\] Chunk .* total=" /tmp/magi_stream.log
+```
+
+Decision:
+
+- If steady-state `TPOC <= 1.0s` and prompt latency is acceptable: lock this profile.
+- If not: reduce compute first, then increase GPU count and retest.
+
+Scripted 30s artifacts to inspect:
+
+- `VideoDiffusion/.tmp/*_calibration.json`
+- `VideoDiffusion/.tmp/*_script_injection_report.json`
+- `VideoDiffusion/.tmp/*_summary.json`
+
+Persist benchmark artifacts to R2 after each run:
+
+- upload JSON/CSV/MP4 into `neurodiffusion/runs/<run_id>/`
+- keep local `.tmp` only as short-lived workspace cache
 
 ## Cost discipline
 
-- Do not leave pods running between tests.
-- Terminate pods immediately when a test finishes:
+- Never leave pods running between test sessions.
+- End spend immediately:
   - `prime pods terminate <POD_ID> --yes`

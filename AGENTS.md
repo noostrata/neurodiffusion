@@ -6,15 +6,22 @@ This repository is intentionally operator-first: scripts should be deterministic
 
 - `docs/image-streaming.md` is the ImageDiffusion source of truth.
 - `docs/video-magi1-streaming.md` is the VideoDiffusion source of truth.
+- `docs/video-magi1-observations.md` is the master reference for empirical MAGI-1 findings, run outcomes, and tuning decisions.
 - `docs/prime-intellect.md` is the Prime Intellect provisioning source of truth.
 - `docs/prime/how_keys.md` is the key/token hygiene source of truth.
+- `docs/cloudflare-r2.md` is the storage/caching source of truth.
+- `docs/accelerate.md` is the acceleration strategy source of truth.
 - `docs/legacy/` contains historic VAST.ai notes only. New work must not depend on these.
+
+Acceleration policy guardrail:
+
+- `docs/accelerate.md` currently defines a Hopper-only fast path where MagiAttention is expected in the prebuilt stack.
 
 ## Repository Layout (Current Focus)
 
 - `ImageDiffusion/` — SD-Turbo image streaming runtime.
 - `VideoDiffusion/` — MAGI-1 video setup, weights flow, test, and stream.
-- `scripts/prime/` — shared Prime connection resolver.
+- `scripts/prime/` — Prime offer policy/query/selection + pod lifecycle + SSH resolver.
 - `config/` — templates and local, ignored overrides.
 - `docs/` — operator documentation and contracts.
 
@@ -24,6 +31,7 @@ This repository is intentionally operator-first: scripts should be deterministic
 2. Never commit pod-specific hostnames, IPs, ports, or access tokens.
 3. Keep vendor repos, checkpoints, and generated media in `.gitignore` scope.
 4. Use `config/prime.env` only for local run settings and keep it ignored.
+5. Use local R2 env files only outside git and never print raw access keys/tokens.
 
 ## Prime Intellect Contract
 
@@ -78,6 +86,19 @@ Streaming contract:
 - a short local render budget
 - output defaults to `VideoDiffusion/magi_try.mp4` unless `VIDEO_MAGE_OUTPUT` is set.
 
+`VideoDiffusion/test_single_chunk.sh` also accepts runtime overrides for controlled experiments without editing vendor configs:
+
+- `VIDEO_MAGE_NUM_STEPS`
+- `VIDEO_MAGE_NUM_FRAMES`
+- `VIDEO_MAGE_VIDEO_SIZE_H`
+- `VIDEO_MAGE_VIDEO_SIZE_W`
+- `VIDEO_MAGE_WINDOW_SIZE`
+
+Geometry contract:
+
+- `VIDEO_MAGE_VIDEO_SIZE_H` and `VIDEO_MAGE_VIDEO_SIZE_W` must be divisible by `16`.
+- Prefer `VIDEO_MAGE_NUM_FRAMES` in multiples of `24` for chunk-aligned outputs.
+
 ### Latest Validated Profiles
 
 - Ultra-cheap proof-of-life (1 chunk):
@@ -126,6 +147,82 @@ Streaming contract:
 
 For A6000/SM86-class pods, keep `VIDEO_MAGE_FP8=0` (or rely on `auto` in `test_single_chunk.sh`) for deterministic smoke completion.
 
+### Longer / more dynamic generation profiles
+
+- 4-second dynamic shot (4 chunks):
+
+  ```bash
+  VIDEO_MAGE_PROMPT="Handheld tracking shot through a dense cyberpunk market at night, neon reflections in wet pavement, moving crowd, animated holograms, drifting steam, parallax signage, passing bikes, cinematic motion blur" \
+  VIDEO_MAGE_OUTPUT=magi_dynamic_4s.mp4 \
+  VIDEO_MAGE_FP8=auto \
+  VIDEO_MAGE_CONFIG=example/4.5B/4.5B_distill_quant_config.json \
+  VIDEO_MAGE_VISIBLE_DEVICES=0 \
+  VIDEO_MAGE_NPROC=1 \
+  VIDEO_MAGE_NUM_FRAMES=96 \
+  VIDEO_MAGE_NUM_STEPS=12 \
+  VIDEO_MAGE_WINDOW_SIZE=1 \
+  VIDEO_MAGE_VIDEO_SIZE_H=512 \
+  VIDEO_MAGE_VIDEO_SIZE_W=512 \
+  bash ./test_single_chunk.sh
+  ```
+
+- 8-second complex shot (8 chunks, recommended to start with 2 GPUs):
+
+  ```bash
+  VIDEO_MAGE_PROMPT="Slow aerial descent into a rainy megacity boulevard at dusk, layered traffic flow, pedestrians with umbrellas, volumetric fog, flickering billboards, depth-rich parallax, long-lens cinematic movement" \
+  VIDEO_MAGE_OUTPUT=magi_complex_8s.mp4 \
+  VIDEO_MAGE_FP8=auto \
+  VIDEO_MAGE_CONFIG=example/4.5B/4.5B_distill_quant_config.json \
+  VIDEO_MAGE_VISIBLE_DEVICES=0,1 \
+  VIDEO_MAGE_NPROC=2 \
+  VIDEO_MAGE_NUM_FRAMES=192 \
+  VIDEO_MAGE_NUM_STEPS=16 \
+  VIDEO_MAGE_WINDOW_SIZE=1 \
+  VIDEO_MAGE_VIDEO_SIZE_H=640 \
+  VIDEO_MAGE_VIDEO_SIZE_W=640 \
+  bash ./test_single_chunk.sh
+  ```
+
+### Stream-time dynamic prompt behavior contract
+
+- Prompt updates are chunk-boundary gated by design.
+- For lowest prompt-to-visual latency:
+  - keep `MAGI_WINDOW_SIZE=1`
+  - keep `QUEUE_LEN` small (`~96`)
+  - keep `DROP_OLD_ON_PROMPT=1`
+- For throughput-focused runs:
+  - larger `MAGI_WINDOW_SIZE` can improve throughput but increases prompt response lag.
+
+### Scripted 30-second prompt-injection workflow
+
+- Schedule source: `VideoDiffusion/prompt_schedules/cyberpunk_30s_hybrid.csv`
+- Schedule runner: `VideoDiffusion/run_prompt_schedule.py`
+- End-to-end orchestrator: `VideoDiffusion/test_scripted_30s.sh`
+- Prime lifecycle wrapper: `VideoDiffusion/run_scripted_30s_prime.sh`
+- Prime matrix runner: `VideoDiffusion/run_prime_gpu_matrix.sh`
+- Offer/query scripts: `scripts/prime/query_magi_offers.py`, `scripts/prime/select_magi_offer.py`
+- Lifecycle scripts: `scripts/prime/provision_magi_pod.sh`, `scripts/prime/run_magi_remote.sh`, `scripts/prime/terminate_magi_pod.sh`
+- Policy file: `scripts/prime/magi_gpu_policies.json`
+- Budget guard:
+  - `BUDGET_USD` default `15`
+  - requires `HOURLY_RATE_USD`
+  - computes `max_runtime_sec = floor((BUDGET_USD * 0.90 / HOURLY_RATE_USD) * 3600)`
+- Calibration ladder before final 30-second output:
+  1. `4.5b` tier: `1 -> 3 -> 4` GPUs (6 chunks per rung)
+  2. `24b` tier: `4 -> 8` GPUs (6 chunks per rung)
+- Selection rule:
+  - pick smallest rung with steady-state `p90 TPOC <= 1.0s`
+
+### Multi-GPU scaling contract (single node)
+
+- `test_single_chunk.sh`:
+  - set `VIDEO_MAGE_VISIBLE_DEVICES` to the exact GPU list
+  - set `VIDEO_MAGE_NPROC` to the same device count (or `auto`)
+- `realtime_magi_stream.py`:
+  - prefer `torchrun --standalone --nproc_per_node=<N> realtime_magi_stream.py`
+  - set `MAGI_CP_SIZE=<N>`, `MAGI_PP_SIZE=1` for context-parallel experiments
+- Increase GPU count only after confirming latency bottleneck remains after reducing resolution/steps.
+
 ### Video validation checks
 
 - Confirm that output has expected length/frame count:
@@ -152,8 +249,19 @@ Any workflow change must update in lockstep:
 
 1. Update implementation script in `ImageDiffusion/` or `VideoDiffusion/`.
 2. Update the relevant source-of-truth doc in `docs/`.
-3. Update `docs/prime-intellect.md` if provider/cost behavior changes.
-4. Keep all provider-specific legacy guidance in `docs/legacy/` only.
+3. Update `docs/video-magi1-observations.md` with empirical outcome/tuning notes for the change.
+4. Update Prime lifecycle implementation in `scripts/prime/` when provider contracts or selection logic change.
+5. Update `docs/cloudflare-r2.md` when cache/artifact layout or storage tooling changes.
+6. Update `docs/accelerate.md` when startup/build/caching strategy changes.
+7. Update `docs/prime-intellect.md` if provider/cost behavior changes.
+8. Keep all provider-specific legacy guidance in `docs/legacy/` only.
+
+Lockstep empirical rule:
+
+1. Every matrix or lifecycle run that changes infra/runtime behavior must update:
+2. implementation script(s),
+3. source-of-truth runbook(s),
+4. `docs/video-magi1-observations.md` run outcomes + tuning decisions.
 
 ## Validation Gate (Minimum)
 
@@ -165,8 +273,10 @@ Run before handing over any branch:
 
 ## Cost Control
 
-- Keep pods alive only while testing and stop immediately once smoke tests pass.
+- Keep pods alive only while testing and terminate immediately once smoke tests pass.
 - Default to one-GPU pathways for smoke tests; scale up explicitly via environment variables.
+- First run on fresh pods may include one-time kernel JIT compilation cost/time; budget for this warm-up before throughput measurements.
+- Use `prime pods terminate <POD_ID> --yes` for explicit spend stop (current CLI has no `prime pods stop` command).
 
 ## Legacy Archive Rule
 

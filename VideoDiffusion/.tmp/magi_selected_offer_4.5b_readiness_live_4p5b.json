@@ -1,0 +1,35 @@
+{
+  "tier": "4.5b",
+  "min_viable_nproc": 1,
+  "selected_offer": {
+    "tier": "4.5b",
+    "query_gpu_type": "A100_80GB",
+    "query_gpu_count": 1,
+    "query_region": "eu_north",
+    "availability_id": "0ca953",
+    "cloud_id": "1A100.22V_SPOT",
+    "gpu_type": "A100 80GB (Spot)",
+    "gpu_count": 1,
+    "region": "eu_north",
+    "location": "FI",
+    "provider": "datacrunch",
+    "socket": "PCIe",
+    "price_value": 0.4515,
+    "price_per_hour": "$0.45",
+    "stock_status": "Available",
+    "security": "datacenter",
+    "vcpus": "22",
+    "memory_gb": "120",
+    "disk_gb": "200+",
+    "gpu_memory": 80,
+    "is_spot": true,
+    "query_elapsed_s": 0.5666865829844028
+  },
+  "selection_rule": [
+    "lower price_value first",
+    "then higher gpu_count",
+    "then preferred region order",
+    "then provider lexical"
+  ],
+  "candidate_count": 13
+}

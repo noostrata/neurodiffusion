@@ -1,0 +1,85 @@
+{
+  "regions_default": [
+    "eu_north",
+    "eu_east",
+    "eu_west",
+    "united_states"
+  ],
+  "targets": {
+    "steady_p90_tpoc_s": 1.0
+  },
+  "budget_defaults": {
+    "usd": 15
+  },
+  "tiers": {
+    "4.5b": {
+      "tier_key": "tier_4p5b",
+      "min_viable_nproc": 1,
+      "calibration_ladders": [
+        1,
+        3,
+        4
+      ],
+      "candidates": [
+        {
+          "gpu_type": "RTX4090_24GB",
+          "gpu_counts": [
+            1,
+            4
+          ]
+        },
+        {
+          "gpu_type": "A6000_48GB",
+          "gpu_counts": [
+            1,
+            4
+          ]
+        },
+        {
+          "gpu_type": "A100_80GB",
+          "gpu_counts": [
+            1,
+            4
+          ]
+        },
+        {
+          "gpu_type": "H100_80GB",
+          "gpu_counts": [
+            1,
+            8
+          ]
+        },
+        {
+          "gpu_type": "H200_141GB",
+          "gpu_counts": [
+            1,
+            4
+          ]
+        }
+      ]
+    },
+    "24b": {
+      "tier_key": "tier_24b",
+      "min_viable_nproc": 4,
+      "calibration_ladders": [
+        4,
+        8
+      ],
+      "candidates": [
+        {
+          "gpu_type": "H100_80GB",
+          "gpu_counts": [
+            4,
+            8
+          ]
+        },
+        {
+          "gpu_type": "H200_141GB",
+          "gpu_counts": [
+            4
+          ]
+        }
+      ]
+    }
+  }
+}

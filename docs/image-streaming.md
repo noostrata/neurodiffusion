@@ -21,9 +21,13 @@ This is the canonical runbook for image streaming on Prime Intellect.
 5. Open tunnel:
    - `bash ImageDiffusion/tunnel_to_stream.sh`
 6. Open browser:
-  - `http://localhost:8888/`
-7. Stop/terminate pod after test pass:
-   - `prime pods stop <POD_ID>`
+   - `http://localhost:8888/`
+7. Terminate pod after test pass:
+   - `prime pods terminate <POD_ID> --yes`
+
+For artifact persistence between short-lived pods, use Cloudflare R2:
+
+- `docs/cloudflare-r2.md`
 
 Troubleshooting quick checks:
 

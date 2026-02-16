@@ -1,64 +1,117 @@
 # Prime Intellect: Key and Access Playbook
 
-_Last updated: 2026-02-13_
+_Last validated: 2026-02-16_
 
 ## Scope
 
-- Prime API key and SSH keys for account CLI usage.
-- Safe project-local workflow in `config/prime.env`.
-- Optional Hugging Face token handling for model downloads.
+This doc defines secret hygiene for:
 
-## What keys are in scope
+- Prime API key (CLI/API auth)
+- SSH private key for pod access
+- Cloudflare R2 credentials (artifact/cache storage)
+- optional Hugging Face token for model pulls
 
-- **Prime API key**: used by Prime CLI and API calls.
-- **SSH key pair**: local private key + registered public key for pod SSH.
-- **Hugging Face token**: optional, for HF download throttling.
+## Secret boundary (what must never enter git)
+
+Do not commit:
+
+- `~/.prime/config.json`
+- private SSH keys (`*.pem`, `id_rsa`, etc.)
+- token exports (`HUGGING_FACE_HUB_TOKEN`, `PRIME_API_KEY`)
+- Cloudflare/R2 credential exports (`AGENT_S3_ACCESS_KEY_ID`, `AGENT_S3_SECRET_ACCESS_KEY`, `CLOUDFLARE_API_TOKEN`)
+- `config/prime.env` values
+
+Tracked repo file:
+
+- `config/prime.env.example` only (template, no secrets)
 
 ## Recommended local layout
 
-- CLI config: `~/.prime/config.json`.
-- SSH key: path set in Prime CLI config (`prime config set-ssh-key-path`) and mirrored in
-  `config/prime.env` as `PRIME_SSH_KEY_PATH`.
-- Pod/runtime config: `config/prime.env` (ignored by git).
-- Resolver keys: leave `PRIME_SSH_HOST` / `PRIME_SSH_PORT` unset in repo examples.
+- Prime CLI config: `~/.prime/config.json`
+- SSH private key: local path outside repo (for example `~/.ssh/primeintellect_private_key.pem`)
+- Cloudflare R2 env file: `/Users/xenochain/agents/secrets/r2_full_access.env`
+- Repo runtime env: `config/prime.env` (gitignored)
 
-## Setup commands
+Use pod id based resolution by default:
 
-- Install CLI:
-  - `curl -LsSf https://astral.sh/uv/install.sh | sh`
-  - `uv tool install prime`
-- Authenticate + set SSH key path:
-  - `prime login`
-  - `prime config set-api-key`
-  - `prime config set-ssh-key-path <PATH_TO_YOUR_SSH_KEY>`
-- Verify context and team usage:
-  - `prime teams list`
-  - `prime config set-team-id <TEAM_ID>`
-  - `prime whoami`
-  - `prime config view`
+- set `PRIME_POD_ID`
+- set `PRIME_SSH_KEY_PATH`
+- leave `PRIME_SSH_HOST` and `PRIME_SSH_PORT` unset unless doing explicit overrides
 
-## SSH access
+## Secure bootstrap sequence
 
-- Primary local method is through pod id + `prime pods status <POD_ID> -o json`.
-- `scripts/prime/resolve_ssh.sh` reads:
-  - `config/prime.env`
-  - `PRIME_POD_ID` fallback or explicit `PRIME_SSH_*` overrides.
-- If you get `Permission denied (publickey)`:
-  1. Verify CLI key path: `prime config view`.
-  2. Verify repo key path: `grep PRIME_SSH_KEY_PATH config/prime.env`.
-  3. Ensure scripts use `root` user (default for pod SSH connections).
-  4. Recreate the pod after updating SSH key configuration.
-  5. If SSH attempts fail with connection timeouts to `<PORT>`, check whether the pod
-     still exposes SSH at that port and recreate/replace the pod if needed.
+1. Install CLI:
+   - `curl -LsSf https://astral.sh/uv/install.sh | sh`
+   - `uv tool install prime`
+2. Authenticate:
+   - `prime login`
+   - `prime config set-api-key`
+3. Bind SSH key path:
+   - `prime config set-ssh-key-path <PATH_TO_PRIVATE_KEY>`
+4. If using team credits:
+   - `prime teams list`
+   - `prime config set-team-id <TEAM_ID>`
+5. Verify active context:
+   - `prime whoami`
+   - `prime config view`
 
-## Optional Hugging Face
+## File permission hardening
 
-- `hf auth login`
-- or
+Recommended permission checks:
+
+```bash
+chmod 600 ~/.ssh/primeintellect_private_key.pem
+chmod 600 config/prime.env
+```
+
+Quick scan to ensure no tokens leaked into tracked files:
+
+```bash
+rg -n "hf_[A-Za-z0-9]{20,}|PRIME_API_KEY|AGENT_S3_ACCESS_KEY_ID|AGENT_S3_SECRET_ACCESS_KEY|CLOUDFLARE_API_TOKEN|BEGIN (RSA|OPENSSH|PRIVATE) KEY" .
+```
+
+## SSH troubleshooting flow
+
+If `Permission denied (publickey)`:
+
+1. Confirm configured key path:
+   - `prime config view`
+2. Confirm repo env path:
+   - `grep -n '^PRIME_SSH_KEY_PATH=' config/prime.env`
+3. Confirm pod identity/ports:
+   - `prime pods status <POD_ID> -o json`
+4. Retry direct CLI connect:
+   - `prime pods ssh <POD_ID>`
+5. If still failing, recreate pod after key fix:
+   - `prime pods terminate <POD_ID> --yes`
+   - recreate from fresh availability entry
+
+If SSH times out repeatedly, treat the pod endpoint as stale and recreate.
+
+## Hugging Face token hygiene (optional)
+
+Preferred flow:
+
+- `hf auth login` (stores token in HF cache)
+
+Fallback env var:
+
 - `export HUGGING_FACE_HUB_TOKEN=hf_...`
 
-## Notes
+If you export a token in shell history, rotate it afterward.
 
-- Never commit secrets.
-- Keep key files out of repo.
-- Use minimal privilege and rotate after sharing or suspected exposure.
+## Rotation and incident response
+
+Rotate keys immediately if you suspect exposure:
+
+1. Revoke/rotate Prime API key from account settings.
+2. Generate a new SSH key pair and update Prime key path.
+3. Rotate HF token if it was present in shell logs/files.
+4. Terminate all active pods that were launched with exposed credentials.
+
+## Minimal operational policy
+
+1. Keep secrets only in local config files and shell session scope.
+2. Use short-lived pods and terminate after each validation run.
+3. Re-run `prime whoami` before expensive jobs to confirm the expected team context.
+4. Source R2 credentials only for sessions that require cloud storage operations.

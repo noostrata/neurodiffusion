@@ -1,0 +1,55 @@
+{
+  "tier": "24b",
+  "policy_path": "/Users/xenochain/Code/neurodiffusion/scripts/prime/magi_gpu_policies.json",
+  "regions": [
+    "eu_north"
+  ],
+  "query_targets": [
+    {
+      "gpu_type": "H100_80GB",
+      "gpu_count": 4,
+      "region": "eu_north"
+    },
+    {
+      "gpu_type": "H100_80GB",
+      "gpu_count": 8,
+      "region": "eu_north"
+    },
+    {
+      "gpu_type": "H200_141GB",
+      "gpu_count": 4,
+      "region": "eu_north"
+    }
+  ],
+  "offer_count": 1,
+  "error_count": 0,
+  "errors": [],
+  "offers": [
+    {
+      "tier": "24b",
+      "query_gpu_type": "H100_80GB",
+      "query_gpu_count": 8,
+      "query_region": "eu_north",
+      "availability_id": "1fc803",
+      "cloud_id": "8H100.80S.176V",
+      "gpu_type": "H100 80GB",
+      "gpu_count": 8,
+      "region": "eu_north",
+      "location": "FI",
+      "provider": "datacrunch",
+      "socket": "SXM5",
+      "price_value": 18.32,
+      "price_per_hour": "$18.32",
+      "stock_status": "Available",
+      "security": "datacenter",
+      "vcpus": "176",
+      "memory_gb": "1480",
+      "disk_gb": "4000",
+      "gpu_memory": 640,
+      "is_spot": false,
+      "query_elapsed_s": 0.5531349999364465
+    }
+  ],
+  "generated_at_epoch_s": 1771268581,
+  "dry_run": true
+}

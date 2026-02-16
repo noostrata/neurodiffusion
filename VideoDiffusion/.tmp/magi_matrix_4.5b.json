@@ -1,0 +1,51 @@
+{
+  "generated_at": "2026-02-16T19:00:21+00:00",
+  "tier": "4.5b",
+  "budget_usd": 1.0,
+  "regions": [
+    "eu_north"
+  ],
+  "rows": [
+    {
+      "run_idx": "1",
+      "run_tag": "matrix_4p5b_1_200021",
+      "availability_id": "0ca953",
+      "gpu_type": "A100 80GB (Spot)",
+      "gpu_count": "1",
+      "region": "eu_north",
+      "provider": "datacrunch",
+      "hourly_rate_usd": "0.4515",
+      "budget_slice_usd": "0.4",
+      "cost_estimate_usd": "0",
+      "steady_tpoc_p90_s": "",
+      "cue_fidelity_ratio": "",
+      "pass": "0",
+      "exit_code": "0",
+      "status": "DRY_RUN",
+      "summary_json": ""
+    },
+    {
+      "run_idx": "2",
+      "run_tag": "matrix_4p5b_2_200021",
+      "availability_id": "f7619e",
+      "gpu_type": "A6000 48GB",
+      "gpu_count": "1",
+      "region": "eu_north",
+      "provider": "datacrunch",
+      "hourly_rate_usd": "0.49",
+      "budget_slice_usd": "0.4",
+      "cost_estimate_usd": "0",
+      "steady_tpoc_p90_s": "",
+      "cue_fidelity_ratio": "",
+      "pass": "0",
+      "exit_code": "0",
+      "status": "DRY_RUN",
+      "summary_json": ""
+    }
+  ],
+  "summary": {
+    "attempted": 2,
+    "passed": 0,
+    "estimated_spend_usd": 0.0
+  }
+}

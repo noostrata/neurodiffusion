@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-02-16T19:03:08+00:00",
+  "tier": "24b",
+  "budget_usd": 2.0,
+  "regions": [
+    "eu_north"
+  ],
+  "rows": [
+    {
+      "run_idx": "1",
+      "run_tag": "matrix_24b_1_200308",
+      "availability_id": "1fc803",
+      "gpu_type": "H100 80GB",
+      "gpu_count": "8",
+      "region": "eu_north",
+      "provider": "datacrunch",
+      "hourly_rate_usd": "18.32",
+      "budget_slice_usd": "1.0",
+      "cost_estimate_usd": "0",
+      "steady_tpoc_p90_s": "",
+      "cue_fidelity_ratio": "",
+      "pass": "0",
+      "exit_code": "0",
+      "status": "DRY_RUN",
+      "summary_json": ""
+    }
+  ],
+  "summary": {
+    "attempted": 1,
+    "passed": 0,
+    "estimated_spend_usd": 0.0
+  }
+}

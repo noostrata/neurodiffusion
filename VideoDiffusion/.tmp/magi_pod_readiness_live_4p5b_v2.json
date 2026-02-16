@@ -1,0 +1,21 @@
+{
+  "run_id": "readiness_live_4p5b_v2",
+  "generated_at": "2026-02-16T19:13:15+00:00",
+  "pod_name": "magi-readiness_live_4p5b_v2",
+  "pod_id": "c91c8cbd7f2948ab97677a059e529ed3",
+  "availability_id": "0ca953",
+  "ready": true,
+  "pod_status": {
+    "id": "c91c8cbd7f2948ab97677a059e529ed3",
+    "status": "ACTIVE",
+    "name": "magi-readiness_live_4p5b_v2",
+    "team_id": "cmlkei4kn004t11xmt3jle8bp",
+    "provider": "datacrunch",
+    "gpu": "A100_80GB x1",
+    "image": "ubuntu_22_cuda_12",
+    "created_at": "2026-02-16 19:12:20 UTC",
+    "ip": "95.216.229.235",
+    "ssh": "root@95.216.229.235 -p 22",
+    "installation_status": "FINISHED"
+  }
+}

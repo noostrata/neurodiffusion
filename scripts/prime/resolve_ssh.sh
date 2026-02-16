@@ -21,9 +21,29 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 
 CONFIG_FILE="${PRIME_CONFIG_FILE:-${REPO_ROOT}/config/prime.env}"
+PRESET_PRIME_POD_ID="${PRIME_POD_ID+x}"
+PRESET_PRIME_SSH_HOST="${PRIME_SSH_HOST+x}"
+PRESET_PRIME_SSH_USER="${PRIME_SSH_USER+x}"
+PRESET_PRIME_SSH_PORT="${PRIME_SSH_PORT+x}"
+PRESET_PRIME_POD_ID_VAL="${PRIME_POD_ID:-}"
+PRESET_PRIME_SSH_HOST_VAL="${PRIME_SSH_HOST:-}"
+PRESET_PRIME_SSH_USER_VAL="${PRIME_SSH_USER:-}"
+PRESET_PRIME_SSH_PORT_VAL="${PRIME_SSH_PORT:-}"
 if [[ -f "${CONFIG_FILE}" ]]; then
   # shellcheck source=/dev/null
   source "${CONFIG_FILE}"
+fi
+if [[ -n "${PRESET_PRIME_POD_ID}" ]]; then
+  PRIME_POD_ID="${PRESET_PRIME_POD_ID_VAL}"
+fi
+if [[ -n "${PRESET_PRIME_SSH_HOST}" ]]; then
+  PRIME_SSH_HOST="${PRESET_PRIME_SSH_HOST_VAL}"
+fi
+if [[ -n "${PRESET_PRIME_SSH_USER}" ]]; then
+  PRIME_SSH_USER="${PRESET_PRIME_SSH_USER_VAL}"
+fi
+if [[ -n "${PRESET_PRIME_SSH_PORT}" ]]; then
+  PRIME_SSH_PORT="${PRESET_PRIME_SSH_PORT_VAL}"
 fi
 
 if [[ -n "${PRIME_SSH_HOST:-}" ]]; then

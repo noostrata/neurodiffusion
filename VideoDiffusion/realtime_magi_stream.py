@@ -14,6 +14,7 @@ Setup (on the pod):
 Run (single GPU):
 
     export CUDA_VISIBLE_DEVICES=0
+    export MAGI_INITIAL_PROMPT="Slow dolly shot through a busy cyberpunk alley at night, neon signs flickering, light rain, passing cars and pedestrians moving"
     export QUEUE_LEN=96
     export DROP_OLD_ON_PROMPT=1
     export JPEG_QUALITY=75
@@ -54,10 +55,11 @@ SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 QUEUE_LEN   = int(os.getenv("QUEUE_LEN", "600"))  # holds ~20 s at 30 fps
 JPEG_QUALITY = int(os.getenv("JPEG_QUALITY", "85"))
 DROP_OLD_ON_PROMPT = os.getenv("DROP_OLD_ON_PROMPT", "1").strip().lower() in {"1", "true", "yes", "on"}
+INITIAL_PROMPT = os.getenv("MAGI_INITIAL_PROMPT", "sunset over baltic sea")
 
 # ─────────────────────────────────────── Prompt state ──
 class PromptState:
-    def __init__(self, initial="sunset over baltic sea"):
+    def __init__(self, initial: str):
         from threading import Lock
         self._lock = Lock()
         self._p = initial
@@ -70,7 +72,7 @@ class PromptState:
             print(f"[Prompt] Set to: {self._p}")
             return self._p
 
-PROMPT_STATE = PromptState()
+PROMPT_STATE = PromptState(INITIAL_PROMPT)
 
 # ─────────────────────────────────────── Stats state ──
 class StatsState:
@@ -428,11 +430,9 @@ def stream():
                     if producer_thread is not None and (not producer_thread.is_alive()):
                         print("[stream] Producer thread seems to have stopped. Ending stream.")
                         break
-                    # If producer is alive, just means generation is slow, continue waiting
-                    yield (boundary + b"\r\n"
-                           b"Content-Type: text/plain\r\n\r\n" +
-                           b"Waiting for next frame...\r\n")
-                    time.sleep(0.1) # Prevent busy-looping on timeout
+                    # If producer is alive, generation is still in progress.
+                    # Keep waiting without emitting non-JPEG multipart payloads.
+                    time.sleep(0.1)
         except GeneratorExit:
             print("[stream] Client disconnected.")
         except Exception as e:

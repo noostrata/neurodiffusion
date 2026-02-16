@@ -4,7 +4,18 @@
 - Prime Intellect availability: https://docs.primeintellect.ai/cli-reference/check-gpu-availability
 - Prime Intellect provisioning: https://docs.primeintellect.ai/cli-reference/provision-gpu
 - Prime Intellect API: https://docs.primeintellect.ai/api-reference/introduction
+- Prime custom Docker image tutorial: https://docs.primeintellect.ai/tutorials/deploy-custom-docker-image
+- Prime API create pod schema (`customTemplateId`): https://docs.primeintellect.ai/api-reference/openapi-spec/get-openapi-specification
+- Prime API provision GPU (`customTemplateId`, pricing examples): https://docs.primeintellect.ai/api-reference/provision-gpu
+- Prime API check docker image (`registryCredentials`): https://docs.primeintellect.ai/api-reference/template/check-docker-image
+- Prime disk lifecycle and billing behavior: https://docs.primeintellect.ai/cli-reference/managing-disks
+- Prime Intellect billing dashboard: https://app.primeintellect.ai/dashboard/billing
+- Cloudflare R2 S3 compatibility: https://developers.cloudflare.com/r2/api/s3/api/
+- Cloudflare R2 AWS CLI example: https://developers.cloudflare.com/r2/examples/aws/aws-cli/
+- Cloudflare R2 pricing: https://developers.cloudflare.com/r2/pricing/
 - Hugging Face CLI: https://huggingface.co/docs/huggingface_hub/guides/cli
 - MAGI-1 upstream: https://github.com/SandAI-org/MAGI-1
+- MAGI-1 model-zoo hardware guidance: https://github.com/SandAI-org/MAGI-1?tab=readme-ov-file#model-zoo
 - MagiAttention: https://github.com/SandAI-org/MagiAttention
+- FlashAttention README (install/build guidance): https://github.com/Dao-AILab/flash-attention/blob/main/README.md
 - MAGI-1 paper (arXiv): https://arxiv.org/abs/2505.13211

@@ -1,0 +1,8 @@
+# Krea bootstrap dependency lock (operator-managed)
+# This lock intentionally pins the bootstrap surface used by setup_krea.sh.
+# The upstream krea-ai/realtime-video package dependencies are installed from source checkout.
+
+pip==25.2
+setuptools==80.9.0
+wheel==0.45.1
+huggingface-hub==0.34.3

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neurodiffusion.local/schemas/runtime-manifest.schema.json",
+  "title": "MAGI Runtime Manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "runtime_tag",
+    "git_commit",
+    "cuda_stack",
+    "python_lock_hash",
+    "artifact_checksums",
+    "tier_support",
+    "build_gpu_class",
+    "validated_profiles"
+  ],
+  "properties": {
+    "runtime_tag": {
+      "type": "string",
+      "minLength": 1
+    },
+    "git_commit": {
+      "type": "string"
+    },
+    "cuda_stack": {
+      "type": "object",
+      "required": [
+        "python",
+        "torch",
+        "cuda",
+        "gpu_name",
+        "sm"
+      ],
+      "properties": {
+        "python": { "type": "string" },
+        "torch": { "type": "string" },
+        "cuda": { "type": "string" },
+        "gpu_name": { "type": "string" },
+        "sm": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "python_lock_hash": {
+      "type": "string"
+    },
+    "artifact_checksums": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "tier_support": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "4.5b",
+          "24b"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "build_gpu_class": {
+      "type": "string"
+    },
+    "validated_profiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "model_shard_checksums": {
+      "type": "object"
+    }
+  }
+}

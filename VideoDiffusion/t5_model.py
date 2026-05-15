@@ -11,9 +11,7 @@ import pathlib # Added for absolute path
 
 class T5Embedder:
     available_models = ["t5-v1_1-xxl"]
-    bad_punct_regex = re.compile(
-        r"[" + "#®•©™&@·º½¾¿¡§~" + "\)" + "\(" + "\]" + "\[" + "\}" + "\{" + "\|" + "\\" + "\/" + "\*" + "]{1,}"
-    )  # noqa
+    bad_punct_regex = re.compile("[" + re.escape("#®•©™&@·º½¾¿¡§~)(][}{|\\/*") + "]{1,}")  # noqa
 
     def __init__(
         self,
@@ -276,4 +274,4 @@ class T5Embedder:
         caption = re.sub(r"['_,\.\:;-+\]$", "", caption)
         caption = re.sub(r"^\.\S+$", "", caption)
 
-        return caption.strip() 
+        return caption.strip()

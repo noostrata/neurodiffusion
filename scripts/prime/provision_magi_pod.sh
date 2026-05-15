@@ -29,6 +29,7 @@ OUT_JSON="${OUT_DIR}/magi_pod_${RUN_ID}.json"
 mkdir -p "${OUT_DIR}"
 
 echo "[provision] creating pod name=${POD_NAME} availability_id=${PRIME_AVAILABILITY_ID} image=${POD_IMAGE} disk=${POD_DISK_GB}GB"
+set +e
 CREATE_OUTPUT="$(
   prime pods create \
     --id "${PRIME_AVAILABILITY_ID}" \
@@ -37,7 +38,13 @@ CREATE_OUTPUT="$(
     --disk-size "${POD_DISK_GB}" \
     --yes 2>&1
 )"
+CREATE_RC=$?
+set -e
 echo "${CREATE_OUTPUT}"
+if [[ "${CREATE_RC}" -ne 0 ]]; then
+  echo "[error] prime pods create failed with exit=${CREATE_RC}." >&2
+  exit "${CREATE_RC}"
+fi
 
 extract_pod_id_from_list() {
   local name="$1"
@@ -113,12 +120,21 @@ READY="0"
 LAST_STATUS=""
 LAST_IP=""
 LAST_SSH=""
+LAST_LOG_TS=0
+LAST_LOGGED_STATUS=""
 while [[ ${SECONDS} -lt ${deadline} ]]; do
   status_json="$(prime pods status "${POD_ID}" -o json)"
   IFS=$'\t' read -r status ip ssh <<<"$(printf "%s" "${status_json}" | parse_status_line)"
   LAST_STATUS="${status}"
   LAST_IP="${ip}"
   LAST_SSH="${ssh}"
+
+  if [[ "${status}" != "${LAST_LOGGED_STATUS}" || $((SECONDS - LAST_LOG_TS)) -ge 30 ]]; then
+    elapsed=$((PROVISION_TIMEOUT_S - (deadline - SECONDS)))
+    echo "[provision] waiting status=${status} ip=${ip} ssh=${ssh} elapsed=${elapsed}s"
+    LAST_LOG_TS="${SECONDS}"
+    LAST_LOGGED_STATUS="${status}"
+  fi
 
   case "${status}" in
     TERMINATED|FAILED|ERROR|DELETED)

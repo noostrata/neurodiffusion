@@ -4,7 +4,7 @@
 - Prime Intellect availability: https://docs.primeintellect.ai/cli-reference/check-gpu-availability
 - Prime Intellect provisioning: https://docs.primeintellect.ai/cli-reference/provision-gpu
 - Prime Intellect API: https://docs.primeintellect.ai/api-reference/introduction
-- Prime custom Docker image tutorial: https://docs.primeintellect.ai/tutorials/deploy-custom-docker-image
+- Prime custom Docker image tutorial: https://docs.primeintellect.ai/tutorials-on-demand-cloud/deploy-custom-docker-image
 - Prime API create pod schema (`customTemplateId`): https://docs.primeintellect.ai/api-reference/openapi-spec/get-openapi-specification
 - Prime API provision GPU (`customTemplateId`, pricing examples): https://docs.primeintellect.ai/api-reference/provision-gpu
 - Prime API check docker image (`registryCredentials`): https://docs.primeintellect.ai/api-reference/template/check-docker-image
@@ -16,6 +16,17 @@
 - Hugging Face CLI: https://huggingface.co/docs/huggingface_hub/guides/cli
 - MAGI-1 upstream: https://github.com/SandAI-org/MAGI-1
 - MAGI-1 model-zoo hardware guidance: https://github.com/SandAI-org/MAGI-1?tab=readme-ov-file#model-zoo
+- MAGI-1 README (raw, line-stable): https://raw.githubusercontent.com/SandAI-org/MAGI-1/main/README.md
 - MagiAttention: https://github.com/SandAI-org/MagiAttention
+- MagiAttention README (raw, line-stable): https://raw.githubusercontent.com/SandAI-org/MagiAttention/main/README.md
 - FlashAttention README (install/build guidance): https://github.com/Dao-AILab/flash-attention/blob/main/README.md
+- FlashAttention README (raw, line-stable): https://raw.githubusercontent.com/Dao-AILab/flash-attention/main/README.md
 - MAGI-1 paper (arXiv): https://arxiv.org/abs/2505.13211
+- Daydream Scope quickstart: https://docs.daydream.live/scope/getting-started/quickstart
+- Daydream Scope API load pipeline: https://docs.daydream.live/scope/reference/api/load-pipeline
+- Daydream Scope API send parameters: https://docs.daydream.live/scope/reference/api/parameters
+- Daydream Scope OSC guide: https://docs.daydream.live/scope/guides/osc
+- Daydream Scope LongLive pipeline: https://docs.daydream.live/scope/reference/pipelines/longlive
+- Daydream Scope system requirements: https://docs.daydream.live/scope/reference/system-requirements
+- Daydream Scope repo: https://github.com/daydreamlive/scope
+- LongLive upstream: https://github.com/NVlabs/LongLive

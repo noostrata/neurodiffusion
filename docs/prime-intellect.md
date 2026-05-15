@@ -1,6 +1,6 @@
 # Prime Intellect
 
-_Last validated: 2026-02-16 with `prime` CLI `v0.5.36`._
+_Last validated: 2026-02-18 with `prime` CLI `v0.5.36`._
 
 All provisioning for this repository uses Prime Intellect pods.
 
@@ -33,6 +33,7 @@ Current CLI/API behavior (validated 2026-02-16):
 
 - `prime whoami` exposes identity + token scopes, not numeric credits.
 - `prime teams list` exposes team metadata, not balance.
+- `prime --help` (`v0.5.36`) lists no billing/wallet command in the account command group.
 - No documented `prime` command currently returns wallet balance directly.
 
 Use the Prime billing dashboard for numeric credits:
@@ -66,6 +67,7 @@ Connect:
 Terminate when done (preferred and explicit spend stop):
 
 - `prime pods terminate <POD_ID> --yes`
+- `prime pods list -o json` (confirm no unused active pods remain)
 
 Ephemeral IP host-key note:
 
@@ -87,10 +89,55 @@ Note: this CLI version has `terminate` (no `prime pods stop` command).
 This repo now provides deterministic wrappers for discovery, selection, provisioning, remote run, and teardown:
 
 - `python3 scripts/prime/query_magi_offers.py --tier <4.5b|24b> --regions <csv>`
-- `python3 scripts/prime/select_magi_offer.py --scan-json <path> --print-env`
+- `python3 scripts/prime/select_magi_offer.py --scan-json <path> --selection-goal <realtime|cost> --print-env`
 - `bash scripts/prime/provision_magi_pod.sh`
-- `bash scripts/prime/run_magi_remote.sh`
+- `bash scripts/prime/run_magi_remote.sh` (restore runtime from R2, execute run, pull artifacts, upload run outputs)
 - `bash scripts/prime/terminate_magi_pod.sh`
+
+`run_magi_remote.sh` forwards optional runtime/calibration env overrides to in-pod runs:
+
+- `MAGI_VIDEO_SIZE_H`, `MAGI_VIDEO_SIZE_W`, `MAGI_NUM_STEPS`, `MAGI_NUM_FRAMES`, `MAGI_WINDOW_SIZE`, `MAGI_CONFIG_FILE`
+- `MAGI_CP_SIZE`, `MAGI_PP_SIZE`
+- `CALIB_CHUNKS`, `CALIB_TIMEOUT_S`, `CALIB_RUNG_LIST`
+- `SCHEDULE_TIMEOUT_S`, `SERVER_READY_TIMEOUT_S`, `TARGET_TPOC_S`
+- `QUEUE_LEN`, `DROP_OLD_ON_PROMPT`, `JPEG_QUALITY`
+
+SSH contract notes (validated on Runpod + Datacrunch):
+
+- Do not assume port `22`; parse `prime pods status <POD_ID> -o json` field `ssh` and use its `-p <port>`.
+- `run_magi_remote.sh` now resolves host/user/port first, then builds ssh/scp options from resolved values.
+- On remote run failure, artifact sync is attempted before returning non-zero.
+- Remote artifact sync now pulls run-tag files only (not full remote `.tmp`) to avoid multi-GB transfer stalls.
+- Temp archive creation in `run_magi_remote.sh` now uses portable `mktemp` behavior.
+
+## Model-aware offer scan and remote build (MAGI + Krea)
+
+For cross-model selection/build orchestration use:
+
+- `python3 scripts/prime/query_video_offers.py --model <magi|krea> --tier <tier>`
+- `python3 scripts/prime/select_video_offer.py --model <magi|krea> --scan-json <path> --selection-goal <realtime|cost> --print-env`
+- `bash scripts/prime/build_video_runtime_remote.sh`
+
+Model policies:
+
+- MAGI: `scripts/prime/magi_gpu_policies.json`
+- Krea: `scripts/prime/krea_gpu_policies.json`
+
+Krea default realtime ranking policy currently targets:
+
+1. `B200_180GB x1` with `flash`
+2. `H100_80GB x1` with `sage`
+3. `GH200_96GB x1` / `H200_141GB x1` with `sage`
+4. `L40S_48GB x1` / `RTX6000Ada_48GB x1` with `sage`
+
+Remote build + publish workflow:
+
+```bash
+VIDEO_MODEL=krea \
+ATTN_BACKEND=auto \
+VIDEO_REMOTE_PUBLISH_PREBUILD=1 \
+bash scripts/prime/build_video_runtime_remote.sh
+```
 
 Policy source:
 
@@ -106,10 +153,14 @@ Tier policy defaults:
 
 Deterministic offer selection rule:
 
-1. lower `price_value`
-2. higher `gpu_count`
-3. preferred region order from policy
-4. provider lexical order
+1. filter by required GPU count:
+   - `realtime`: uses policy `realtime_min_nproc` floor
+   - `cost`: uses policy `min_viable_nproc` floor
+   - `--min-gpu-count <N>` can raise the floor further
+2. lower `price_value`
+3. higher `gpu_count`
+4. preferred region order from policy
+5. provider lexical order
 
 One-command lifecycle entrypoint:
 
@@ -118,8 +169,18 @@ bash VideoDiffusion/run_scripted_30s_prime.sh \
   --mode lifecycle \
   --tier 4.5b \
   --budget-usd 15 \
+  --selection-goal realtime \
+  --min-gpu-count 4 \
+  --max-provision-retries 4 \
+  --restore-mode auto \
+  --runtime-tag <runtime_tag> \
   --regions eu_north,eu_east,eu_west,united_states
 ```
+
+Operational notes:
+
+- `--max-provision-retries` sets max total provision attempts and handles stale availability IDs by re-querying/reselecting and excluding failed IDs.
+- lifecycle attempt/provision telemetry is written to `VideoDiffusion/.tmp/magi_lifecycle_telemetry_<run_tag>.jsonl`.
 
 Dry-run (discovery + selection only):
 
@@ -161,7 +222,20 @@ R2 storage prefixes to keep stable:
 
 - `neurodiffusion/wheelhouse/`
 - `neurodiffusion/env-cache/`
+- `neurodiffusion/images/`
 - `neurodiffusion/runs/`
+- `neurodiffusion/manifests/runtime-tuples/`
+
+Tuple publish/restore helpers in this repo:
+
+- publish: `WEIGHTS_DIR=/root/neurodiffusion/VideoDiffusion/MAGI-1/. bash VideoDiffusion/publish_r2_prebuild.sh --runtime-tag <runtime_tag> --tiers 4.5b,24b --include-weights --allow-missing-image`
+- restore: `bash VideoDiffusion/restore_r2_prebuild.sh --mode auto --runtime-tag <runtime_tag> --tier 4.5b --apply-venv-target /root/neurodiffusion/VideoDiffusion/.venv --apply-weights-target /root/neurodiffusion/VideoDiffusion/MAGI-1`
+
+Note:
+
+- MAGI `download_weights.sh` normalizes `MAGI-1/downloads/` with symlinks.
+- Use real-file weights source (`MAGI-1/.` or staged equivalent) during tuple publish to avoid symlink-only archives.
+- Latest direct validation on this path produced a full 30s clip on `A100 80GB x1` (`384x384`, `8` steps, `720` frames) and then terminated pod.
 
 Local bootstrap for R2:
 
@@ -171,35 +245,46 @@ source /Users/xenochain/agents/secrets/r2_full_access.env
 
 Then follow `docs/cloudflare-r2.md` for upload/download contract.
 
-## Availability snapshot (2026-02-16, dynamic market)
+## Availability snapshot (dynamic market)
 
-These values are examples only. Re-query before provisioning.
+These values are volatile. Re-query immediately before provisioning.
 
-| Region | SKU | GPUs | Price/hour |
-| --- | --- | --- | --- |
-| `eu_north` | H100 80GB Spot (`datacrunch`) | 1 | `$0.8015` |
-| `eu_north` | H100 80GB Spot (`datacrunch`) | 2 | `$1.6030` |
-| `eu_north` | H100 80GB Spot (`datacrunch`) | 8 | `$6.4120` |
-| `eu_north` | RTX4090 24GB (`runpod`) | 1 | `$0.6068` |
-| `eu_north` | RTX4090 24GB (`runpod`) | 2 | `$1.1968` |
-| `eu_north` | RTX4090 24GB (`runpod`) | 4 | `$2.3768` |
-| `united_states` | H100 80GB (`primecompute`) | 8 | `$14.40` |
+Live sample captured from this workstation at `2026-02-16T22:04:22Z` (lowest observed listing for each query):
 
-Observed query result: `H100_80GB` with `--regions united_states --gpu-count 24` returned zero matches at validation time.
+```bash
+prime availability list --gpu-type RTX4090_24GB --gpu-count 1 --regions eu_north -o json
+prime availability list --gpu-type H100_80GB --gpu-count 1 --regions eu_north -o json
+prime availability list --gpu-type H100_80GB --gpu-count 8 --regions united_states -o json
+prime availability disks --regions eu_north -o json
+```
+
+| Region | Query | Lowest observed listing |
+| --- | --- | --- |
+| `eu_north` | `RTX4090_24GB`, `gpu-count=1` | `runpod`, `$0.6068/h` |
+| `eu_north` | `H100_80GB`, `gpu-count=1` | `datacrunch` (spot), `$0.8015/h` |
+| `eu_north` | `H100_80GB`, `gpu-count=1` | `datacrunch` (non-spot), `$2.29/h` |
+| `united_states` | `H100_80GB`, `gpu-count=8` | `lambdalabs`, `$23.92/h` |
 
 ## Budget quick math
 
-Cost formula:
+Canonical budget formulas and monthly comparison tables are in:
+
+- `docs/budget-analysis.md`
+
+Quick formulas:
 
 - `cost_usd = hours * hourly_price`
 - `hours = budget_usd / hourly_price`
 
-For a `$5` budget (using the snapshot above):
+Use this one-liner to compute runtime from the currently selected offer:
 
-- 1x H100 Spot (`$0.8015/h`) -> about `6.24h` max runtime.
-- 2x H100 Spot (`$1.603/h`) -> about `3.12h`.
-- 8x H100 Spot (`$6.412/h`) -> about `46.8 minutes`.
-- 1x RTX4090 (`$0.6068/h`) -> about `8.24h`.
+```bash
+python3 - <<'PY'
+budget_usd = 15.0
+hourly_rate_usd = 0.6068  # replace with current selected offer
+print((budget_usd / hourly_rate_usd), "hours")
+PY
+```
 
 Practical policy:
 

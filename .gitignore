@@ -4,11 +4,17 @@ ssh_*.json
 config/prime.env
 config/prime.env.bak*
 config/vast.env
+config/vast.env.bak*
 config/instances/
 
 # Local notes
 # Remote clones / downloaded weights (keep repo light)
 VideoDiffusion/MAGI-1/
+VideoDiffusion/.vendors/
+VideoDiffusion/.cache/
+VideoDiffusion/.tmp/
+VideoDiffusion/.krea_runtime.env
+VideoDiffusion/.scope_runtime.env
 
 # Logs
 *.log

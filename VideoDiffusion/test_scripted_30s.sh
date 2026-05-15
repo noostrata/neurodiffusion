@@ -4,15 +4,34 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
-PYTHON_BIN="${VIDEO_MAGE_PYTHON_BIN:-python3}"
-TORCHRUN_BIN="${VIDEO_MAGE_TORCHRUN_BIN:-torchrun}"
+DEFAULT_PYTHON_BIN="python3"
+if [ -x "${SCRIPT_DIR}/.venv/bin/python" ]; then
+  DEFAULT_PYTHON_BIN="${SCRIPT_DIR}/.venv/bin/python"
+fi
+PYTHON_BIN="${VIDEO_MAGE_PYTHON_BIN:-${DEFAULT_PYTHON_BIN}}"
+
+DEFAULT_TORCHRUN_BIN="torchrun"
+if [ -x "${SCRIPT_DIR}/.venv/bin/torchrun" ]; then
+  DEFAULT_TORCHRUN_BIN="${SCRIPT_DIR}/.venv/bin/torchrun"
+fi
+TORCHRUN_BIN="${VIDEO_MAGE_TORCHRUN_BIN:-${DEFAULT_TORCHRUN_BIN}}"
+TORCHRUN_LAUNCH=()
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   echo "[error] Python interpreter not found: ${PYTHON_BIN}" >&2
   exit 1
 fi
-if ! command -v "${TORCHRUN_BIN}" >/dev/null 2>&1; then
-  echo "[error] torchrun not found: ${TORCHRUN_BIN}" >&2
+if command -v "${TORCHRUN_BIN}" >/dev/null 2>&1; then
+  TORCHRUN_LAUNCH=("${TORCHRUN_BIN}")
+elif "${PYTHON_BIN}" - <<'PY' >/dev/null 2>&1
+import importlib
+import sys
+sys.exit(0 if importlib.util.find_spec("torch.distributed.run") else 1)
+PY
+then
+  TORCHRUN_LAUNCH=("${PYTHON_BIN}" "-m" "torch.distributed.run")
+else
+  echo "[error] No torch distributed launcher found. Set VIDEO_MAGE_TORCHRUN_BIN or install torchrun." >&2
   exit 1
 fi
 if ! command -v ffmpeg >/dev/null 2>&1; then
@@ -81,7 +100,15 @@ else
   MAGI_NUM_STEPS="${MAGI_NUM_STEPS:-16}"
 fi
 MAGI_NUM_FRAMES="${MAGI_NUM_FRAMES:-720}"
+if ! [[ "${MAGI_NUM_FRAMES}" =~ ^[0-9]+$ ]] || [ "${MAGI_NUM_FRAMES}" -le 0 ]; then
+  echo "[error] MAGI_NUM_FRAMES must be a positive integer (got '${MAGI_NUM_FRAMES}')." >&2
+  exit 1
+fi
 MAGI_WINDOW_SIZE="${MAGI_WINDOW_SIZE:-1}"
+TARGET_NUM_FRAMES="${MAGI_NUM_FRAMES}"
+if [ "${TARGET_NUM_FRAMES}" -ne 720 ]; then
+  echo "[warn] Running non-30s profile: MAGI_NUM_FRAMES=${TARGET_NUM_FRAMES} (~$((TARGET_NUM_FRAMES / 24))s at 24fps)." >&2
+fi
 QUEUE_LEN="${QUEUE_LEN:-96}"
 DROP_OLD_ON_PROMPT="${DROP_OLD_ON_PROMPT:-1}"
 JPEG_QUALITY="${JPEG_QUALITY:-75}"
@@ -92,6 +119,7 @@ TARGET_TPOC_S="${TARGET_TPOC_S:-1.0}"
 
 SCHEDULE_POLL_S="${SCHEDULE_POLL_S:-0.25}"
 SCHEDULE_TIMEOUT_S="${SCHEDULE_TIMEOUT_S:-180}"
+CALIB_TIMEOUT_S="${CALIB_TIMEOUT_S:-300}"
 SERVER_READY_TIMEOUT_S="${SERVER_READY_TIMEOUT_S:-240}"
 CALIB_CHUNKS="${CALIB_CHUNKS:-6}"
 CALIB_FRAMES="$((CALIB_CHUNKS * 24))"
@@ -139,6 +167,7 @@ FINAL_MESSAGE=""
 SELECTED_NPROC=""
 SELECTED_DEVICES=""
 FINAL_STREAM_LOG=""
+CURRENT_STREAM_LOG=""
 
 MAX_RUNTIME_SEC="$(${PYTHON_BIN} - <<PY
 import math
@@ -224,6 +253,7 @@ def load_json(path):
 summary = {
     "run_id": "${RUN_ID}",
     "status": os.environ.get("STATUS", "UNKNOWN"),
+    "termination_status": os.environ.get("STATUS", "UNKNOWN"),
     "message": os.environ.get("MESSAGE", ""),
     "start_ts": "${START_TS_ISO}",
     "end_ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -241,7 +271,8 @@ summary = {
         "video_size_h": int("${MAGI_VIDEO_SIZE_H}"),
         "video_size_w": int("${MAGI_VIDEO_SIZE_W}"),
         "num_steps": int("${MAGI_NUM_STEPS}"),
-        "num_frames": int("${MAGI_NUM_FRAMES}"),
+        "num_frames": int("${TARGET_NUM_FRAMES}"),
+        "expected_duration_s": float("${TARGET_NUM_FRAMES}") / 24.0,
         "window_size": int("${MAGI_WINDOW_SIZE}"),
     },
     "artifacts": {
@@ -257,6 +288,23 @@ summary = {
     "calibration": load_json("${CALIB_JSON}"),
     "metrics": load_json("${METRICS_JSON}"),
     "ffprobe": load_json("${FFPROBE_JSON}"),
+}
+
+try:
+    start = datetime.fromisoformat(summary["start_ts"].replace("Z", "+00:00"))
+    end = datetime.fromisoformat(summary["end_ts"].replace("Z", "+00:00"))
+    actual_runtime = max(0.0, (end - start).total_seconds())
+except Exception:
+    actual_runtime = 0.0
+
+hourly_rate = float("${HOURLY_RATE_USD}")
+summary["budget"] = {
+    "hourly_rate_usd": hourly_rate,
+    "budget_usd": float("${BUDGET_USD}"),
+    "max_runtime_sec": int("${MAX_RUNTIME_SEC}"),
+    "actual_runtime_sec": actual_runtime,
+    "estimated_spend_usd": hourly_rate * (actual_runtime / 3600.0),
+    "termination_status": summary["termination_status"],
 }
 
 with open("${SUMMARY_JSON}", "w", encoding="utf-8") as f:
@@ -309,12 +357,26 @@ trap 'on_err ${LINENO}' ERR
 trap on_term TERM INT
 trap on_exit EXIT
 
-(
-  sleep "${MAX_RUNTIME_SEC}"
-  date -u +"%Y-%m-%dT%H:%M:%SZ" > "${BUDGET_ABORT_FLAG}"
-  echo "[budget] Max runtime reached (${MAX_RUNTIME_SEC}s). Triggering abort." >&2
-  kill -TERM "$$" >/dev/null 2>&1 || true
-) &
+"${PYTHON_BIN}" - "${MAX_RUNTIME_SEC}" "${BUDGET_ABORT_FLAG}" "$$" <<'PY' &
+from datetime import datetime, timezone
+import os
+import signal
+import sys
+import time
+
+max_runtime = int(sys.argv[1])
+flag_path = sys.argv[2]
+parent_pid = int(sys.argv[3])
+
+time.sleep(max_runtime)
+with open(flag_path, "w", encoding="utf-8") as f:
+    f.write(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") + "\n")
+print(f"[budget] Max runtime reached ({max_runtime}s). Triggering abort.", file=sys.stderr, flush=True)
+try:
+    os.kill(parent_pid, signal.SIGTERM)
+except ProcessLookupError:
+    pass
+PY
 WATCHDOG_PID="$!"
 
 wait_for_server() {
@@ -326,11 +388,19 @@ wait_for_server() {
     fi
     if [ -n "${STREAM_PID}" ] && ! kill -0 "${STREAM_PID}" >/dev/null 2>&1; then
       echo "[error] Stream process exited before server became ready." >&2
+      if [ -n "${CURRENT_STREAM_LOG}" ] && [ -f "${CURRENT_STREAM_LOG}" ]; then
+        echo "[error] Stream log tail (${CURRENT_STREAM_LOG}):" >&2
+        tail -n 80 "${CURRENT_STREAM_LOG}" >&2 || true
+      fi
       return 1
     fi
     sleep 1
   done
   echo "[error] Timed out waiting for ${BASE_URL}/stats" >&2
+  if [ -n "${CURRENT_STREAM_LOG}" ] && [ -f "${CURRENT_STREAM_LOG}" ]; then
+    echo "[error] Stream log tail (${CURRENT_STREAM_LOG}):" >&2
+    tail -n 80 "${CURRENT_STREAM_LOG}" >&2 || true
+  fi
   return 1
 }
 
@@ -378,11 +448,12 @@ start_stream() {
   export MAGI_PP_SIZE="${MAGI_PP_SIZE_OVERRIDE:-1}"
 
   if [ "${nproc}" -gt 1 ]; then
-    "${TORCHRUN_BIN}" --standalone --nproc_per_node="${nproc}" realtime_magi_stream.py >"${log_path}" 2>&1 &
+    "${TORCHRUN_LAUNCH[@]}" --standalone --nproc_per_node="${nproc}" realtime_magi_stream.py >"${log_path}" 2>&1 &
   else
     "${PYTHON_BIN}" realtime_magi_stream.py >"${log_path}" 2>&1 &
   fi
   STREAM_PID="$!"
+  CURRENT_STREAM_LOG="${log_path}"
 }
 
 stop_stream() {
@@ -450,12 +521,33 @@ if len(chunks) < target:
 PY
 }
 
+csv_escape() {
+  local raw="$1"
+  raw="${raw//$'\r'/ }"
+  raw="${raw//$'\n'/ }"
+  raw="${raw//\"/\"\"}"
+  printf '"%s"' "${raw}"
+}
+
+write_calib_row() {
+  local row=""
+  local val
+  for val in "$@"; do
+    if [ -n "${row}" ]; then
+      row+=","
+    fi
+    row+="$(csv_escape "${val}")"
+  done
+  printf "%s\n" "${row}" >> "${CALIB_RESULTS_CSV}"
+}
+
 printf "rung_nproc,devices,status,chunk_count,steady_mean_s,steady_p90_s,pass,stream_log,timings_json\n" > "${CALIB_RESULTS_CSV}"
 
 echo "[info] Starting calibration ladder (1 -> 3 -> 4 GPUs when available)"
 IFS=',' read -r -a CALIB_RUNGS <<< "${CALIB_RUNG_LIST}"
 LAST_TESTED_NPROC=""
 LAST_TESTED_DEVICES=""
+RUNNABLE_FAILED_COUNT=0
 for rung in "${CALIB_RUNGS[@]}"; do
   rung="$(echo "${rung}" | xargs)"
   if [ -z "${rung}" ]; then
@@ -466,8 +558,8 @@ for rung in "${CALIB_RUNGS[@]}"; do
     continue
   fi
   if [ "${rung}" -gt "${GPU_COUNT}" ]; then
-    printf "%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-      "${rung}" "" "skipped_insufficient_devices" "0" "" "" "0" "" "" >> "${CALIB_RESULTS_CSV}"
+    write_calib_row \
+      "${rung}" "" "skipped_insufficient_devices" "0" "" "" "0" "" ""
     continue
   fi
 
@@ -478,10 +570,11 @@ for rung in "${CALIB_RUNGS[@]}"; do
   echo "[info] Calibration rung nproc=${rung} devices=${devices}"
   start_stream "${rung}" "${devices}" "${CALIB_FRAMES}" "${rung_log}" "${first_prompt}"
   wait_for_server "${SERVER_READY_TIMEOUT_S}"
-  if ! collect_chunk_timings "${rung_timings}" "${CALIB_CHUNKS}" "${SCHEDULE_POLL_S}" "${SCHEDULE_TIMEOUT_S}"; then
+  if ! collect_chunk_timings "${rung_timings}" "${CALIB_CHUNKS}" "${SCHEDULE_POLL_S}" "${CALIB_TIMEOUT_S}"; then
     stop_stream
-    printf "%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-      "${rung}" "${devices}" "failed_collect" "0" "" "" "0" "${rung_log}" "${rung_timings}" >> "${CALIB_RESULTS_CSV}"
+    RUNNABLE_FAILED_COUNT=$((RUNNABLE_FAILED_COUNT + 1))
+    write_calib_row \
+      "${rung}" "${devices}" "failed_collect" "0" "" "" "0" "${rung_log}" "${rung_timings}"
     continue
   fi
   stop_stream
@@ -522,8 +615,8 @@ print(1 if p90 <= target else 0)
 PY
 )"
 
-  printf "%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-    "${rung}" "${devices}" "ok" "${chunk_count}" "${steady_mean}" "${steady_p90}" "${rung_pass}" "${rung_log}" "${rung_timings}" >> "${CALIB_RESULTS_CSV}"
+  write_calib_row \
+    "${rung}" "${devices}" "ok" "${chunk_count}" "${steady_mean}" "${steady_p90}" "${rung_pass}" "${rung_log}" "${rung_timings}"
 
   LAST_TESTED_NPROC="${rung}"
   LAST_TESTED_DEVICES="${devices}"
@@ -542,7 +635,11 @@ if [ -z "${SELECTED_NPROC}" ]; then
     echo "[warn] No rung met target TPOC; falling back to highest tested nproc=${SELECTED_NPROC}"
   else
     FINAL_STATUS="FAILED"
-    FINAL_MESSAGE="Calibration ladder had no runnable rung for current CUDA_VISIBLE_DEVICES."
+    if [ "${RUNNABLE_FAILED_COUNT}" -gt 0 ]; then
+      FINAL_MESSAGE="Calibration failed to collect ${CALIB_CHUNKS} chunks on all runnable rungs (CALIB_TIMEOUT_S=${CALIB_TIMEOUT_S})."
+    else
+      FINAL_MESSAGE="Calibration ladder had no runnable rung for current CUDA_VISIBLE_DEVICES."
+    fi
     exit 1
   fi
 fi
@@ -572,7 +669,7 @@ PY
 
 echo "[info] Starting final 30s scripted run (nproc=${SELECTED_NPROC}, devices=${SELECTED_DEVICES})"
 FINAL_STREAM_LOG="${TMP_DIR}/${RUN_ID}_final_stream.log"
-start_stream "${SELECTED_NPROC}" "${SELECTED_DEVICES}" "${MAGI_NUM_FRAMES}" "${FINAL_STREAM_LOG}" "${first_prompt}"
+start_stream "${SELECTED_NPROC}" "${SELECTED_DEVICES}" "${TARGET_NUM_FRAMES}" "${FINAL_STREAM_LOG}" "${first_prompt}"
 wait_for_server "${SERVER_READY_TIMEOUT_S}"
 
 rm -f "${OUTPUT_FILE}"
@@ -580,7 +677,7 @@ ffmpeg -hide_banner -loglevel warning -y \
   -framerate 24 \
   -f mjpeg \
   -i "${BASE_URL}/stream" \
-  -frames:v "${MAGI_NUM_FRAMES}" \
+  -frames:v "${TARGET_NUM_FRAMES}" \
   -r 24 \
   -c:v libx264 \
   -pix_fmt yuv420p \
@@ -633,9 +730,9 @@ print(frames, duration)
 PY
 )"
 
-if [ "${frame_count}" -lt "${MAGI_NUM_FRAMES}" ]; then
+if [ "${frame_count}" -lt "${TARGET_NUM_FRAMES}" ]; then
   FINAL_STATUS="FAILED"
-  FINAL_MESSAGE="Output frame count ${frame_count} is below expected ${MAGI_NUM_FRAMES}."
+  FINAL_MESSAGE="Output frame count ${frame_count} is below expected ${TARGET_NUM_FRAMES}."
   exit 1
 fi
 

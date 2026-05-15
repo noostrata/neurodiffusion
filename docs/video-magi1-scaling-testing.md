@@ -1,6 +1,6 @@
 # MAGI-1 Scaling (Testing Phase)
 
-_Last validated: 2026-02-16_
+_Last validated: 2026-02-18_
 
 This repository supports chunk-wise prompt hot-swap (24-frame chunks). This guide is a strict testing plan to:
 
@@ -9,6 +9,7 @@ This repository supports chunk-wise prompt hot-swap (24-frame chunks). This guid
 - keep spend predictable during scaling experiments
 
 Canonical runtime behavior remains in `docs/video-magi1-streaming.md`.
+Canonical cost math remains in `docs/budget-analysis.md`.
 
 ## Core metrics and acceptance targets
 
@@ -45,6 +46,9 @@ To keep scaling measurements clean (and cheaper), minimize setup overhead first:
 1. Prefer Prime custom image/template with MAGI deps preinstalled.
 2. Restore wheel/env cache from Cloudflare R2 (`docs/cloudflare-r2.md`).
 3. Run a short warmup chunk before recording `TTFC`/`TPOC`.
+4. For MAGI tuple publish with `--include-weights`, use real-file weights source:
+   - `WEIGHTS_DIR=/root/neurodiffusion/VideoDiffusion/MAGI-1/.`
+   - avoid symlink-only `MAGI-1/downloads/` publish source.
 
 Without this, first-run compile/network overhead can dominate timing and hide actual inference scaling behavior.
 
@@ -98,6 +102,14 @@ Selection rule:
 
 - choose the smallest rung with steady-state `p90 TPOC <= 1.0s`
 - if none pass, fallback to the highest tested rung and mark latency target as unmet
+- if all runnable rungs fail timing collection, run fails with a calibration-timeout diagnostic (tune `CALIB_TIMEOUT_S` / `CALIB_CHUNKS`)
+
+Latest empirical baseline (`2026-02-18`, `A100 80GB x1`, `384x384`, `8` steps):
+
+- steady-state `p90 TPOC` observed around `6.2s`
+- cue application succeeded eventually (`18/18`) but drifted up to `+6` chunks
+- this profile is functional for low-cost testing, but not acceptable for near-real-time control
+- same profile is validated for non-stream full-length rendering (`720` frames / `30.0s`) via `test_single_chunk.sh`, suitable for low-cost quality checks while latency tuning continues
 
 ## First-principles GPU estimate
 
@@ -114,7 +126,7 @@ Conservative example (`eta=0.75`):
 
 If queue depth keeps growing at `N_required`, test one step higher GPU count.
 
-## Northern Europe pricing snapshot (Prime `eu_north`, 2026-02-16)
+## Pricing snapshot (dynamic market)
 
 Always re-query before create:
 
@@ -123,20 +135,21 @@ prime availability list --gpu-type H100_80GB --regions eu_north -o json
 prime availability list --gpu-type RTX4090_24GB --regions eu_north -o json
 ```
 
-Observed entries:
+Live sample on 2026-02-16 (lowest observed listing per query):
 
-- 1x H100 80GB Spot: `$0.8015/h`
-- 2x H100 80GB Spot: `$1.603/h`
-- 8x H100 80GB Spot: `$6.412/h`
-- 1x RTX4090 24GB: `$0.6068/h`
+- `eu_north`, `RTX4090_24GB`, `gpu-count=1`: `$0.6068/h`
+- `eu_north`, `H100_80GB`, `gpu-count=1`: `$0.8015/h` (spot)
+- `eu_north`, `H100_80GB`, `gpu-count=1`: `$2.29/h` (non-spot)
+- `united_states`, `H100_80GB`, `gpu-count=8`: `$23.92/h` (sample listing)
 
 ## Budget planning (`$5` test envelope)
 
-Approximate max runtime from snapshot:
+Approximate max runtime from the live sample:
 
-- 1x H100 Spot: `~6.24h`
-- 2x H100 Spot: `~3.12h`
-- 8x H100 Spot: `~46.8m`
+- 1x RTX4090 (`$0.6068/h`): `~8.24h`
+- 1x H100 spot (`$0.8015/h`): `~6.24h`
+- 1x H100 non-spot (`$2.29/h`): `~2.18h`
+- 8x H100 (`$23.92/h`, sampled in `united_states`): `~12.5m`
 
 Testing-phase rule:
 
@@ -164,8 +177,21 @@ Lifecycle runner:
 bash VideoDiffusion/run_scripted_30s_prime.sh \
   --mode lifecycle \
   --tier 4.5b \
-  --budget-usd 15
+  --budget-usd 15 \
+  --selection-goal realtime \
+  --min-gpu-count 4 \
+  --max-provision-retries 4 \
+  --restore-mode auto \
+  --runtime-tag <runtime_tag>
 ```
+
+Selection defaults:
+
+- `--selection-goal realtime` (default): enforces tier `realtime_min_nproc` from policy.
+- `--selection-goal cost`: cheapest offer above tier `min_viable_nproc`.
+- `--min-gpu-count <N>`: hard lower bound override when you need a specific rung floor.
+- `--max-provision-retries <N>`: max total provision attempts with auto failover if selected availability IDs go stale before `prime pods create`.
+- retry/provision telemetry is persisted in `VideoDiffusion/.tmp/magi_lifecycle_telemetry_<run_tag>.jsonl`.
 
 Matrix runner:
 
@@ -173,7 +199,9 @@ Matrix runner:
 bash VideoDiffusion/run_prime_gpu_matrix.sh \
   --tier 24b \
   --budget-usd 15 \
-  --slice-usd 3
+  --slice-usd 3 \
+  --restore-mode auto \
+  --runtime-tag <runtime_tag>
 ```
 
 Matrix reports:
@@ -192,6 +220,11 @@ export MAGI_PP_SIZE=1
 torchrun --standalone --nproc_per_node=2 realtime_magi_stream.py
 ```
 
+If `/stats` stays at `chunk_idx=-1` across calibration timeouts on multi-GPU runs:
+
+1. retry with `MAGI_CP_SIZE=1` and `MAGI_PP_SIZE=1` first (diagnostic baseline),
+2. then increase `MAGI_CP_SIZE` again after confirming chunk production resumes.
+
 For one-shot clip generation:
 
 ```bash
@@ -208,6 +241,7 @@ Apply in this order before adding GPUs:
 2. Lower resolution
 3. Keep `MAGI_WINDOW_SIZE=1` for prompt-reactive behavior
 4. Use fp8/quant only when hardware + config pairing is stable
+   - For scripted stream runs, prefer `MAGI_FP8=auto` (default) or force `MAGI_FP8=0` on SM80/SM86 if startup is unstable.
 5. Reduce stream encode pressure (`JPEG_QUALITY`, queue size)
 
 ## Data collection and decision rule

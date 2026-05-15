@@ -173,6 +173,10 @@ for env_names, cfg_key in (
     if v is not None:
         runtime_config[cfg_key] = v
 
+t5_device = os.environ.get("VIDEO_MAGE_T5_DEVICE", os.environ.get("MAGI_T5_DEVICE"))
+if t5_device is not None and t5_device.strip():
+    runtime_config["t5_device"] = t5_device.strip()
+
 engine_config = config.get("engine_config", {})
 if fp8_override in {"0", "false", "off", "no"}:
     engine_config["fp8_quant"] = False
@@ -216,7 +220,13 @@ mkdir -p "$(dirname "${OUTPUT_FILE_PATH}")"
 cd "${MAGE_DIR}"
 export PYTHONPATH=".:${PYTHONPATH:-}"
 
-${TORCHRUN_BIN} --standalone --nproc_per_node="${NPROC_PER_NODE}" \
+if [ "${TORCHRUN_BIN}" = "${VIDEO_MAGE_VENV_DIR}/bin/torchrun" ]; then
+  TORCHRUN_CMD=("${PYTHON_BIN}" -m torch.distributed.run)
+else
+  TORCHRUN_CMD=("${TORCHRUN_BIN}")
+fi
+
+"${TORCHRUN_CMD[@]}" --standalone --nproc_per_node="${NPROC_PER_NODE}" \
   inference/pipeline/entry.py \
   --config_file "${RESOLVED_CONFIG_PATH}" \
   --mode t2v \

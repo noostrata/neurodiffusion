@@ -1,0 +1,7 @@
+# Optional local EEG control dependencies.
+# The mock EEG path and fake video server run with the Python standard library
+# plus numpy. BrainFlow is needed for OpenBCI/Cyton/Ganglion hardware. pylsl is
+# needed only if streaming from the OpenBCI GUI over LSL.
+numpy>=1.24
+brainflow>=5.10
+pylsl>=1.16

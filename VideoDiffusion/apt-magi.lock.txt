@@ -1,0 +1,14 @@
+# MAGI runtime apt lock (operator-managed)
+# Generated from VideoDiffusion/setup.sh dependency closure.
+# Use this file as the deterministic OS package baseline on fresh Prime pods.
+
+git
+git-lfs
+ffmpeg
+htop
+build-essential
+python3-dev
+python3-venv
+python3-pip
+ninja-build
+cmake

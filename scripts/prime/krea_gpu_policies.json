@@ -1,0 +1,83 @@
+{
+  "regions_default": [
+    "eu_north",
+    "eu_east",
+    "eu_west",
+    "united_states"
+  ],
+  "targets": {
+    "steady_p90_tpoc_s": 1.0,
+    "rts_score_formula": "0.40*Quality + 0.30*SteeringLatency + 0.20*Stability + 0.10*CostEfficiency"
+  },
+  "budget_defaults": {
+    "usd": 15
+  },
+  "tiers": {
+    "realtime": {
+      "tier_key": "krea_realtime",
+      "min_viable_nproc": 1,
+      "realtime_min_nproc": 1,
+      "calibration_ladders": [
+        1
+      ],
+      "candidates": [
+        {
+          "gpu_type": "B200_180GB",
+          "gpu_counts": [
+            1
+          ],
+          "rank_hint": 1,
+          "preferred_attention": "flash"
+        },
+        {
+          "gpu_type": "H100_80GB",
+          "gpu_counts": [
+            1
+          ],
+          "rank_hint": 2,
+          "preferred_attention": "sage"
+        },
+        {
+          "gpu_type": "GH200_96GB",
+          "gpu_counts": [
+            1
+          ],
+          "rank_hint": 3,
+          "preferred_attention": "sage"
+        },
+        {
+          "gpu_type": "H200_141GB",
+          "gpu_counts": [
+            1
+          ],
+          "rank_hint": 4,
+          "preferred_attention": "sage"
+        },
+        {
+          "gpu_type": "L40S_48GB",
+          "gpu_counts": [
+            1
+          ],
+          "rank_hint": 5,
+          "preferred_attention": "sage"
+        },
+        {
+          "gpu_type": "RTX6000Ada_48GB",
+          "gpu_counts": [
+            1
+          ],
+          "rank_hint": 6,
+          "preferred_attention": "sage"
+        },
+        {
+          "gpu_type": "A6000_48GB",
+          "gpu_counts": [
+            1
+          ],
+          "rank_hint": 7,
+          "preferred_attention": "sage"
+        }
+      ]
+    }
+  }
+}

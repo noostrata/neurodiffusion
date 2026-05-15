@@ -11,6 +11,8 @@ REGIONS="${REGIONS:-}"
 SCHEDULE_CSV="${SCHEDULE_CSV:-VideoDiffusion/prompt_schedules/cyberpunk_30s_hybrid.csv}"
 SLICE_BUDGET_USD="${MATRIX_SLICE_USD:-3}"
 MAX_RUNS="${MATRIX_MAX_RUNS:-10}"
+RESTORE_MODE="${RESTORE_MODE:-auto}"
+RUNTIME_TAG="${RUNTIME_TAG:-}"
 DRY_RUN="0"
 
 usage() {
@@ -25,6 +27,8 @@ Options:
   --regions <csv>         Region override. Default from policy.
   --schedule-csv <path>   Prompt schedule CSV.
   --max-runs <int>        Maximum candidate attempts.
+  --restore-mode <mode>   auto|tuple|image (default: auto)
+  --runtime-tag <tag>     Runtime tag for R2 restore path.
   --dry-run               Do not provision pods; only produce planned matrix report.
 EOF
 }
@@ -55,6 +59,14 @@ while [[ $# -gt 0 ]]; do
       MAX_RUNS="$2"
       shift 2
       ;;
+    --restore-mode)
+      RESTORE_MODE="$2"
+      shift 2
+      ;;
+    --runtime-tag)
+      RUNTIME_TAG="$2"
+      shift 2
+      ;;
     --dry-run)
       DRY_RUN="1"
       shift
@@ -77,6 +89,10 @@ if [[ -z "${TIER}" ]]; then
 fi
 if [[ "${TIER}" != "4.5b" && "${TIER}" != "24b" ]]; then
   echo "[error] --tier must be 4.5b or 24b." >&2
+  exit 1
+fi
+if [[ "${RESTORE_MODE}" != "auto" && "${RESTORE_MODE}" != "tuple" && "${RESTORE_MODE}" != "image" ]]; then
+  echo "[error] --restore-mode must be auto, tuple, or image." >&2
   exit 1
 fi
 if [[ ! -f "${POLICY_JSON}" ]]; then
@@ -276,17 +292,24 @@ PY
     cost_estimate="0"
   else
     set +e
-    bash "${SCRIPT_DIR}/run_scripted_30s_prime.sh" \
-      --mode lifecycle \
-      --tier "${TIER}" \
-      --budget-usd "${budget_slice}" \
-      --schedule-csv "${SCHEDULE_CSV}" \
-      --run-tag "${run_tag}" \
-      --availability-id "${availability_id}" \
-      --selected-gpu-type "${gpu_type}" \
-      --selected-gpu-count "${gpu_count}" \
-      --selected-region "${region}" \
+    run_cmd=(
+      bash "${SCRIPT_DIR}/run_scripted_30s_prime.sh"
+      --mode lifecycle
+      --tier "${TIER}"
+      --budget-usd "${budget_slice}"
+      --restore-mode "${RESTORE_MODE}"
+      --schedule-csv "${SCHEDULE_CSV}"
+      --run-tag "${run_tag}"
+      --availability-id "${availability_id}"
+      --selected-gpu-type "${gpu_type}"
+      --selected-gpu-count "${gpu_count}"
+      --selected-region "${region}"
       --hourly-rate-usd "${price_value}"
+    )
+    if [[ -n "${RUNTIME_TAG}" ]]; then
+      run_cmd+=(--runtime-tag "${RUNTIME_TAG}")
+    fi
+    "${run_cmd[@]}"
     rc=$?
     set -e
 

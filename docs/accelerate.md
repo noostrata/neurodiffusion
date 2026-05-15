@@ -1,20 +1,42 @@
-# Acceleration Playbook (Hopper-Only MAGI)
+# Acceleration Playbook
 
-_Last updated: 2026-02-16_
+_Last updated: 2026-05-15_
 
 This is the canonical performance strategy for this repository.
 
 Policy decision for this repo:
 
-1. Hopper-only acceleration path (`H100/H800`-class guidance from upstream MAGI docs).
-2. MagiAttention is always part of the prebuilt stack.
-3. Prime custom template + Cloudflare R2 is the default architecture.
+1. MAGI-1 keeps the Hopper-first acceleration path (MagiAttention expected in the prebuilt stack).
+2. Krea uses a tiered backend path:
+   - `B200 -> flash-attn`
+   - `H100/H200/GH200/L40S/RTX-Ada/RTX5xxx -> SageAttention`
+   - fallback: `sdpa`
+3. Scope/LongLive is the first realtime EEG validation path and should start on cheap 24GB-class GPUs before expensive Hopper/B200 tiers.
+4. Vast + Cloudflare R2 is the current provider/storage architecture; Prime references below are legacy context unless explicitly revived.
+
+## Scope / LongLive acceleration policy
+
+Scope is upstream-owned; do not fork or vendor-patch it locally for first validation.
+The repo accelerates Scope runs by making startup deterministic:
+
+1. clone/build with `VideoDiffusion/setup_scope.sh`;
+2. place Scope models/logs/plugins under ignored `VideoDiffusion/.cache/daydream-scope/` paths unless overridden;
+3. download the `longlive` model once on the GPU host with `VideoDiffusion/download_scope_models.sh`;
+4. use `VideoDiffusion/load_scope_longlive.sh` for deterministic pipeline load parameters;
+5. use OSC from the EEG loop for prompt/runtime updates instead of adding a Python WebRTC dependency.
+
+First paid validation should optimize for low hourly burn, not maximum FPS:
+
+1. `RTX 4090 24GB` or `RTX 5090 32GB` if available and reliable;
+2. `L40S` / `RTX 6000 Ada` for more memory headroom;
+3. H100/H200 only after the cheap tier proves the control path.
 
 ## 1) Why this policy
 
 Upstream MAGI and MagiAttention docs point to Hopper as the fast path:
 
 - MAGI model-zoo guidance uses `H100/H800` for 24B-class fast paths.
+- MAGI also documents a `4.5B` path on `RTX4090 x1`; this repo still standardizes on Hopper for one prebuilt high-throughput stack.
 - MAGI install docs recommend MagiAttention for Hopper.
 - MagiAttention docs explicitly mark Hopper-only support and note source build can take ~20-30 minutes.
 
@@ -127,6 +149,20 @@ Tuple examples:
 1. Prestage MAGI assets to R2 (or managed disk if repeated same-region workloads justify continuous disk cost).
 2. Keep deterministic asset manifest in repo docs.
 3. Validate checksums/hashes before marking tuple as production.
+4. For MAGI tuple publish, avoid symlink-only weight roots:
+   - `download_weights.sh` normalizes `MAGI-1/downloads/` with symlinks.
+   - publish from real-file root (recommended: `WEIGHTS_DIR=/root/neurodiffusion/VideoDiffusion/MAGI-1/.`).
+
+Repo implementation hooks:
+
+1. Publish tuple artifacts:
+   - `WEIGHTS_DIR=/root/neurodiffusion/VideoDiffusion/MAGI-1/. bash VideoDiffusion/publish_r2_prebuild.sh --runtime-tag <runtime_tag> --tiers 4.5b,24b --include-weights --allow-missing-image`
+2. Restore tuple artifacts:
+   - `bash VideoDiffusion/restore_r2_prebuild.sh --mode auto --runtime-tag <runtime_tag> --tier 4.5b --apply-venv-target <venv_path> --apply-weights-target <magi_dir>`
+3. Underlying object operations:
+   - `python3 scripts/cloudflare/prebuild_bundle.py publish|fetch ...`
+4. Publish code + runtime assets in one command:
+   - `bash scripts/cloudflare/publish_everything_r2.sh --runtime-tag <runtime_tag> --tiers 4.5b,24b --include-weights --include-image`
 
 ## 4.3 Run-time boot (target behavior)
 
@@ -174,25 +210,31 @@ Use both, but for different jobs:
    - canonical long-term store for caches and outputs
    - better for durable archive and cross-pod portability
 
+Canonical cost comparison for this decision:
+
+- `docs/budget-analysis.md`
+
 ## 6) Docker location strategy
 
 For Prime custom template flow, use an OCI registry Prime can access with credentials/template tooling.
 
 Cloudflare notes:
 
-1. Cloudflare Containers has registry capabilities (Cloudflare-native workflow).
-2. Prime docs explicitly document custom-template provisioning and image accessibility checks, but do not provide a first-class “Cloudflare registry direct fast-path” runbook for GPU pods.
+1. Cloudflare documents container image management and R2 object storage.
+2. Prime docs explicitly document custom-template provisioning and image accessibility checks.
+3. This repo now supports R2-stored OCI tar artifacts as an optional restore path (`restore_r2_prebuild.sh --mode image`), while template registry compatibility still depends on Prime provider support.
 
 Practical recommendation for this repo:
 
 1. keep runtime image in Docker Hub/GHCR/ECR-compatible flow validated by Prime template tooling
 2. keep data/caches/artifacts in R2
+3. optionally keep a compressed runtime OCI tar in R2 and load it on pod boot for fast fallback.
 
 Treat “OCI directly on Cloudflare-only stack for Prime GPU pull path” as optional R&D, not default.
 
 ## 7) Speed estimates (repo planning values)
 
-These are planning estimates based on repository runs and source constraints.
+These are empirical planning estimates from local repo runs, not vendor guarantees.
 
 Baseline fresh pod (runtime installs + possible source build):
 
@@ -219,6 +261,34 @@ Hard lower bound remains:
 2. image pull/start latency
 3. first inference warmup
 
+Latest live MAGI finding (`2026-02-18`, non-template fallback, `A100 80GB x1`, `384x384`, `8` steps):
+
+1. Functional prompt injection is confirmed, but one-GPU steady-state remained around `~6s/chunk` (`p90`), far from near-real-time.
+2. Same low-cost profile is now validated to produce full-length one-shot output (`30.0s`, `720` frames) for quality checks.
+3. Practical implication: keep one-GPU for cheap validation/render checks only; use multi-GPU tiers for responsiveness goals.
+4. Restore/bootstrap path is now more robust on fresh pods (`boto3` + missing `python3-venv` fallback handled automatically).
+
+Latest Vast MAGI finding (`2026-05-14`, `H200 x1`, restored `sm80` tuple):
+
+1. Restore speed path worked: R2 env archive and weights archive fetched/extracted successfully.
+2. The restored venv was not fully relocatable because console scripts retained old absolute shebangs; `restore_r2_prebuild.sh` now repairs those scripts after extraction.
+3. The `hopper_sm80_py310_torch240_cu124_20260217_prebuild1` tuple is not Hopper-compatible despite the historical prefix. On H200, MAGI reached DiT load and then failed in VAE decode with `no kernel image is available for execution on the device`.
+4. Fast path policy: route the current `sm80` tuple to A100-class hosts only, or publish a true `sm90` tuple before selecting H100/H200.
+5. `VideoDiffusion/run_magi_vast_smoke.sh` is the preferred attach-mode smoke wrapper because it enforces runtime/GPU compatibility before spending time on restore.
+
+Follow-up Vast MAGI finding (`2026-05-14`, `A100-SXM4-40GB`, restored `sm80` tuple):
+
+1. Architecture match worked: the run avoided the H200 `no kernel image` failure.
+2. R2 tuple restore and venv shebang repair worked (`40` console scripts repaired).
+3. The fresh Vast image lacked Python dev headers, so Triton failed compiling `cuda_utils` with `Python.h: No such file or directory`.
+4. Fast path policy: install minimal system deps before smoke even when restoring a full venv, because Triton/flash-attn can still JIT small helpers at first inference.
+
+Latest live Krea finding (`2026-02-18`, `B200 180GB x1`, flash source-build attempt):
+
+1. `flash-attn==2.7.4.post1` has no matching prebuilt wheel for this tuple, so source build is required.
+2. Source build on fresh pods requires Python headers/toolchain (`python3.11-dev`, `ninja-build`); setup now auto-installs these when `FLASH_ATTN_ALLOW_SOURCE_BUILD=1`.
+3. Provider-side pod termination interrupted long flash source builds in observed B200 runs; keep `H100/H200/GH200 + SageAttention` as the practical default while validating stable B200 capacity.
+
 ## 8) Hopper-only runbook checklist
 
 1. Validate live Hopper availability in target region.
@@ -230,6 +300,27 @@ Hard lower bound remains:
 7. Upload artifacts to R2.
 8. Terminate pod immediately.
 
+## 8.1) Krea realtime acceleration policy (new)
+
+Krea runtime targets in this repo:
+
+1. `krea-b200-flashattn` (best quality/latency headroom)
+2. `krea-hopper-sage` (best practical availability/perf balance)
+3. `krea-ampere-sage-or-sdpa` (cost tier)
+
+Operational defaults for steering:
+
+1. keep denoising steps low (`4-6`) for prompt responsiveness
+2. default one GPU per realtime stream
+3. scale by pod count before trying single-stream multi-GPU
+
+Model-aware runtime scripts:
+
+- `VideoDiffusion/setup_video_runtime.sh`
+- `VideoDiffusion/run_video_stream.sh`
+- `VideoDiffusion/publish_r2_prebuild_model.sh`
+- `VideoDiffusion/restore_r2_prebuild_model.sh`
+
 ## 9) Lockstep update rule (mandatory)
 
 Any acceleration behavior change must update together:
@@ -237,7 +328,8 @@ Any acceleration behavior change must update together:
 1. implementation scripts (`VideoDiffusion/`, `scripts/prime/`)
 2. runbooks (`docs/video-magi1-streaming.md`, `docs/prime-intellect.md`, `docs/cloudflare-r2.md`)
 3. empirical outcomes (`docs/video-magi1-observations.md`)
-4. this strategy doc (`docs/accelerate.md`)
+4. budget model (`docs/budget-analysis.md`) when startup or storage assumptions change cost math
+5. this strategy doc (`docs/accelerate.md`)
 
 ## 10) References
 

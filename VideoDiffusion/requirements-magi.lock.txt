@@ -1,0 +1,14 @@
+# MAGI runtime Python lock (repo-controlled layer)
+# This lock captures packages explicitly pinned by this repo's setup workflow.
+# The upstream MAGI vendor lock remains MAGI-1/requirements.txt (when cloned on pod).
+
+--index-url https://download.pytorch.org/whl/cu124
+--extra-index-url https://pypi.org/simple
+
+torch==2.4.0+cu124
+torchvision==0.19.0+cu124
+flash-attn==2.4.2
+flashinfer-python==0.2.0.post2
+huggingface_hub<1.0
+flask==3.0.3
+flask-cors==4.0.1

@@ -1,0 +1,29 @@
+{
+  "controller": {
+    "consecutive_windows": 2,
+    "cooldown_s": 3.0
+  },
+  "states": {
+    "active": {
+      "prompt": "Cinematic cyberpunk night city, fast tracking camera, sharper contrast, energetic traffic flow, flickering neon, rain reflections, dynamic crowd motion"
+    },
+    "calm": {
+      "prompt": "Cinematic cyberpunk night city, slow floating camera, soft rain reflections, drifting steam, gentle traffic, dreamlike neon haze"
+    },
+    "hold": {
+      "prompt": ""
+    },
+    "switch_scene": {
+      "momentary": true,
+      "prompt": "Hard cut to a new cyberpunk alley angle, passing bikes, animated holograms, wet pavement reflections, strong parallax, cinematic motion"
+    }
+  },
+  "thresholds": {
+    "active_beta_alpha_min": 1.25,
+    "active_engagement_min": 0.9,
+    "artifact_ratio_max_for_calm": 2.75,
+    "calm_alpha_beta_min": 1.35,
+    "switch_peak_to_peak_uv_min": 125.0,
+    "switch_rms_uv_min": 55.0
+  }
+}

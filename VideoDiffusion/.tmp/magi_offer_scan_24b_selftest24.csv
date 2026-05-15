@@ -1,2 +1,0 @@
-tier,availability_id,cloud_id,gpu_type,gpu_count,region,location,provider,socket,price_value,price_per_hour,stock_status,is_spot,query_gpu_type,query_gpu_count,query_region,query_elapsed_s
-24b,1fc803,8H100.80S.176V,H100 80GB,8,eu_north,FI,datacrunch,SXM5,18.32,$18.32,Available,False,H100_80GB,8,eu_north,0.5531349999364465

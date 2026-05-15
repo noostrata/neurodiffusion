@@ -1,284 +1,174 @@
 # AGENTS.md (neurodiffusion)
 
-This repository is intentionally operator-first: scripts should be deterministic, repeatable, and safe on a fresh Prime Intellect pod.
+This repository is operator-first. Scripts and docs should make GPU work deterministic, repeatable, and safe on a fresh Vast.ai instance.
 
-## Canonical Workflow Sources
+## Current Operating Model
 
-- `docs/image-streaming.md` is the ImageDiffusion source of truth.
-- `docs/video-magi1-streaming.md` is the VideoDiffusion source of truth.
-- `docs/video-magi1-observations.md` is the master reference for empirical MAGI-1 findings, run outcomes, and tuning decisions.
-- `docs/prime-intellect.md` is the Prime Intellect provisioning source of truth.
-- `docs/prime/how_keys.md` is the key/token hygiene source of truth.
-- `docs/cloudflare-r2.md` is the storage/caching source of truth.
-- `docs/accelerate.md` is the acceleration strategy source of truth.
-- `docs/legacy/` contains historic VAST.ai notes only. New work must not depend on these.
+- Vast.ai is the active compute provider.
+- MAGI-1 is expected to run remotely on a rented GPU instance, not on the local laptop.
+- Local development should cover code quality, offer selection, preflight checks, EEG control logic, fake servers, logs, and docs.
+- Prime Intellect content is legacy context only. Do not extend `scripts/prime/` or Prime runbooks unless the user explicitly asks for legacy Prime support.
+- Cloudflare R2 is optional persistence/cache infrastructure. It is not a substitute for pulling the final generated video back to the local machine.
 
-Acceleration policy guardrail:
+## Canonical Sources
 
-- `docs/accelerate.md` currently defines a Hopper-only fast path where MagiAttention is expected in the prebuilt stack.
+- `docs/vastai.md` — current Vast provisioning, SSH, lifecycle, and teardown source of truth.
+- `docs/video-magi1-streaming.md` — MAGI-1 setup, weights, smoke, stream, prompt, and validation source of truth.
+- `docs/video-magi1-observations.md` — empirical MAGI outcomes, failures, fixes, and tuning notes.
+- `docs/video-scope-longlive-streaming.md` — Daydream Scope + LongLive realtime setup, OSC control, fake tests, and future Vast runbook.
+- `docs/eeg-openbci-control.md` — OpenBCI/BrainFlow EEG control path.
+- `docs/cloudflare-r2.md` — R2 cache/artifact layout.
+- `docs/accelerate.md` — acceleration/build/cache strategy.
+- `docs/budget-analysis.md` — cost formulas and budget notes.
+- `docs/prime-intellect.md` and `docs/legacy/` — historical context only.
+- `docs/prime/how_keys.md` and `docs/security.md` — key/token hygiene.
 
-## Repository Layout (Current Focus)
+## Repository Layout
 
+- `VideoDiffusion/` — MAGI/Krea/Scope setup, weights/model flow, tests, streams, prompt scheduling, EEG control.
+- `VideoDiffusion/eeg_control/` — offline EEG feature/state/policy/sink system and fake MAGI-compatible control server.
 - `ImageDiffusion/` — SD-Turbo image streaming runtime.
-- `VideoDiffusion/` — MAGI-1 video setup, weights flow, test, and stream.
-- `scripts/prime/` — Prime offer policy/query/selection + pod lifecycle + SSH resolver.
-- `config/` — templates and local, ignored overrides.
-- `docs/` — operator documentation and contracts.
+- `scripts/vast/` — current Vast offer query/selection, instance lifecycle, SSH resolver, teardown.
+- `scripts/cloudflare/` — R2 bootstrap/publish/restore helpers.
+- `scripts/prime/` — legacy Prime support; avoid for new work.
+- `config/` — templates and ignored local overrides.
+- `docs/` — operator contracts and runbooks.
 
-## Mandatory Security Rules
+## Security Rules
 
-1. Never commit secrets or credentials.
-2. Never commit pod-specific hostnames, IPs, ports, or access tokens.
-3. Keep vendor repos, checkpoints, and generated media in `.gitignore` scope.
-4. Use `config/prime.env` only for local run settings and keep it ignored.
-5. Use local R2 env files only outside git and never print raw access keys/tokens.
+1. Never commit secrets, provider tokens, API keys, SSH private keys, HF tokens, R2 credentials, hostnames, IPs, ports, or access tokens.
+2. Keep `config/vast.env` ignored and local-only.
+3. Keep vendor repos, checkpoints, generated media, logs, and local calibration/session files in ignored paths.
+4. Do not print raw credentials in logs or summaries.
+5. If a command creates a paid instance, teardown is part of the same task unless the user explicitly asks to keep it running.
 
-## Prime Intellect Contract
+## Vast.ai Contract
 
-- Provider is configured in `.prime/config.json` (outside repo).
-- Scripts resolve SSH from:
-  - explicit `PRIME_SSH_HOST`/`PRIME_SSH_USER`/`PRIME_SSH_PORT` when present
-  - or `PRIME_POD_ID` via `prime pods status <POD_ID> -o json`
-- `prime` CLI JSON output is part of an external contract. If parsing breaks, update `scripts/prime/resolve_ssh.sh` first.
+- Authenticate outside the repo with `vastai set api-key <KEY>`.
+- Checking credits, user info, offers, and active instances is no-spend and allowed when relevant.
+- Creating an instance is paid work. Do not create one unless the user gives explicit approval or an explicit budget/run request.
+- Prefer a one-GPU A100 80GB smoke target for first MAGI proof-of-life unless the user asks for realtime/Hopper testing.
+- Prefer cheap `RTX 4090`, `RTX 5090`, or `L40S`-class offers for first Scope/LongLive realtime validation before H100/H200.
+- Use `scripts/vast/query_video_offers.py` and `scripts/vast/select_video_offer.py` for deterministic offer selection.
+- Pass the intended R2 runtime tag to `scripts/vast/select_video_offer.py`; `smXX` tags filter to matching GPU families.
+- Current tuple `hopper_sm80_py310_torch240_cu124_20260217_prebuild1` is A100-class only despite the historical `hopper_` prefix. Do not use it on H100/H200 unless intentionally debugging a mismatch.
+- Use `scripts/vast/provision_video_instance.sh`, `scripts/vast/resolve_ssh.sh`, and `scripts/vast/terminate_instance.sh` for lifecycle.
+- `vastai` JSON output is an external contract. If parsing breaks, update `scripts/vast/resolve_ssh.sh` or the relevant Vast parser first.
 
-## Required Script Conventions
+## MAGI-1 Remote Smoke Discipline
 
-- Use `set -euo pipefail`.
+The local checkout does not need to contain the MAGI-1 vendor repo or weights. A real MAGI test means:
+
+1. Query and select a suitable Vast offer, matching the runtime tuple architecture.
+2. Provision a Vast Docker SSH instance.
+3. Resolve SSH through `scripts/vast/resolve_ssh.sh`.
+4. Prefer `VideoDiffusion/run_magi_vast_smoke.sh` for fast tuple restore, smoke execution, local pullback, and optional teardown.
+5. Manual fallback on the instance:
+   - `cd /workspace/neurodiffusion/VideoDiffusion`
+   - `bash setup.sh`
+   - authenticate Hugging Face if needed
+   - `bash download_weights.sh`
+   - run the cheapest one-GPU smoke first with `test_single_chunk.sh`
+6. Validate output with `ffprobe`; use `mpdecimate` when checking for near-static output.
+7. Download the generated video and logs to the local machine before teardown.
+8. Destroy the Vast instance and verify `vastai show instances --raw`.
+
+Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usually mean the remote setup has not been run yet, not that MAGI itself is broken.
+
+## Scope / LongLive Discipline
+
+- Scope is the preferred first realtime EEG video target.
+- LongLive runs through Daydream Scope, not through the MAGI server.
+- `VIDEO_MODEL=scope` and `VIDEO_MODEL=longlive` dispatch to the Scope runtime.
+- Scope setup/launch entry points:
+  - `VideoDiffusion/setup_scope.sh`
+  - `VideoDiffusion/download_scope_models.sh`
+  - `VideoDiffusion/run_scope_server.sh`
+  - `VideoDiffusion/load_scope_longlive.sh`
+- Scope REST controls pipeline lifecycle; OSC controls live runtime parameters.
+- EEG should drive Scope through the `scope` sink, which sends OSC updates to `/scope/prompt`, `/scope/noise_scale`, `/scope/transition_steps`, and related runtime controls.
+- Use `VideoDiffusion/eeg_control/fake_scope_server.py` and `python3 VideoDiffusion/eeg_control/selftest.py` before any paid Scope run.
+- Do not attempt to embed WebRTC inside the EEG loop. Let Scope UI or a browser/WebRTC client own video display; the EEG loop owns control.
+
+## Local Artifact Rule
+
+For generated videos, the user wants the result on the local system.
+
+- Remote-only output is incomplete.
+- R2-only output is incomplete unless a local copy is also pulled down.
+- Prefer a clear local destination such as `/Users/xenochain/Downloads/<run_tag>.mp4` for final user-facing videos.
+- Also pull minimal logs/reports needed to explain success/failure.
+
+## MAGI Runtime Contracts
+
+- MAGI-1 generates fixed 24-frame chunks.
+- Prompt updates apply at chunk boundaries, not per frame.
+- Real-time playback at 24 fps requires steady-state `TPOC <= 1s`.
+- For prompt responsiveness: keep `MAGI_WINDOW_SIZE=1`, keep `QUEUE_LEN` small, and keep `DROP_OLD_ON_PROMPT=1`.
+- `test_single_chunk.sh` defaults to one GPU and supports:
+  - `VIDEO_MAGE_VISIBLE_DEVICES`
+  - `VIDEO_MAGE_NPROC`
+  - `VIDEO_MAGE_NUM_FRAMES`
+  - `VIDEO_MAGE_NUM_STEPS`
+  - `VIDEO_MAGE_VIDEO_SIZE_H`
+  - `VIDEO_MAGE_VIDEO_SIZE_W`
+  - `VIDEO_MAGE_WINDOW_SIZE`
+- Geometry must be divisible by 16. Prefer frame counts in multiples of 24.
+- Do not mix non-quant configs with quant checkpoint paths unless the path remap is intentional.
+
+## EEG / OpenBCI Control Path
+
+- BrainFlow is the primary hardware abstraction for OpenBCI integration.
+- OpenBCI GUI/LSL is a debugging bridge, not the core runtime dependency.
+- `VideoDiffusion/eeg_control/run_neurofeedback_session.py` is the systematic path:
+  - reader -> features -> neuro-state -> art policy -> sink
+- Built-in policies include `reward`, `balancer`, `mirror`, and `inversion`.
+- Sinks include `stdout`, `jsonl`, `http`, `scope`, and `schedule`.
+- Use the fake local MAGI-compatible server before hardware/GPU tests:
+  - `VideoDiffusion/eeg_control/fake_video_control_server.py`
+- Use the fake local Scope server before Scope/LongLive GPU tests:
+  - `VideoDiffusion/eeg_control/fake_scope_server.py`
+- EEG control must send stable state changes with cooldown; do not thrash `/prompt`.
+
+## Code Quality Rules
+
+- Use `set -euo pipefail` in shell scripts.
 - Keep scripts idempotent where practical.
 - Prefer explicit environment variables over hardcoded constants.
 - Avoid manual SSH host strings in tracked files.
-- Keep non-interactive defaults for CI/automation compatibility.
-- Fail early with clear messages and `stderr` output.
+- Keep defaults non-interactive for automation compatibility.
+- Fail early with clear messages on `stderr`.
+- Keep optional dependencies lazy: BrainFlow and pylsl should only import inside paths that need them.
+- Add no-cost selftests when adding control logic or parsers.
+- Use structured parsers and JSON/CSV writers rather than ad hoc string parsing when practical.
 
-## Image Diffusion Run Discipline
+## Docs / Infra Update Discipline
 
-1. Create `config/prime.env` from `config/prime.env.example`.
-2. Set `PRIME_POD_ID` and `PRIME_SSH_KEY_PATH`.
-3. Run `bash ImageDiffusion/remote_setup.sh`.
-4. Run `bash ImageDiffusion/start_stream_server.sh`.
-5. Run `bash ImageDiffusion/tunnel_to_stream.sh`.
-6. Open `http://localhost:8888/`.
+When changing runtime behavior, update in lockstep:
 
-## Video Diffusion Run Discipline
+1. Implementation script(s) in `VideoDiffusion/`, `ImageDiffusion/`, or `scripts/`.
+2. Relevant source-of-truth docs under `docs/`.
+3. `docs/video-magi1-observations.md` for empirical outcomes, failures, fixes, and tuning decisions.
+4. `docs/vastai.md` if provider behavior or lifecycle changes.
+5. `docs/cloudflare-r2.md` if cache/artifact layout changes.
+6. `docs/accelerate.md` if startup/build/caching strategy changes.
+7. `docs/budget-analysis.md` if pricing assumptions, rates, or budget formulas change.
 
-1. Create `config/prime.env` first.
-2. `cd VideoDiffusion && bash setup.sh`.
-3. `setup.sh` installs `flash-attn` with this policy:
-   - attempt wheel-only install first,
-   - fallback to constrained source build only when no prebuilt wheel matches,
-   - tune build cost with `FLASH_ATTN_MAX_JOBS` and `FLASH_ATTN_NVCC_THREADS` as needed.
-   - applies a small MagiAttention compatibility patch so MAGI-1 can call `flex_flash_attn_func(..., max_seqlen_k=...)` on fresh pods.
-4. `bash download_weights.sh` (with HF auth first).
-5. Use one of the validated smoke profiles below (default one-GPU for cost; override `VIDEO_MAGE_NPROC` for throughput).
-6. Validate output frames before scaling.
-7. Start stream with `python realtime_magi_stream.py` when smoke test succeeds.
+New provider instructions go under `docs/`, not `docs/legacy/`.
 
-Streaming contract:
+## Validation Gate
 
-- MAGI-1 generates in fixed 24-frame chunks; prompt updates are applied at chunk boundaries (not per-frame).
-- Real-time playback at 24 fps requires sustaining `Time Per Output Chunk (TPOC) <= 1s` on steady-state chunks.
-- Canonical sizing/latency details live in `docs/video-magi1-streaming.md`.
+Before handing over a branch, run:
 
-`VideoDiffusion/test_single_chunk.sh` defaults to one-GPU (`nproc=1`, `CUDA_VISIBLE_DEVICES=0`) and supports scaling via `VIDEO_MAGE_NPROC`/`VIDEO_MAGE_VISIBLE_DEVICES`:
+```bash
+bash scripts/check.sh
+```
 
-- `example/4.5B/4.5B_distill_quant_config.json` for quantized flow.
-- `example/4.5B/4.5B_distill_config.json` for the reliable non-quant flow used for motion checks on SM80/SM86.
-- a short local render budget
-- output defaults to `VideoDiffusion/magi_try.mp4` unless `VIDEO_MAGE_OUTPUT` is set.
+When attached to a Vast instance, also run:
 
-`VideoDiffusion/test_single_chunk.sh` also accepts runtime overrides for controlled experiments without editing vendor configs:
+```bash
+vastai show instances --raw
+bash scripts/vast/resolve_ssh.sh
+```
 
-- `VIDEO_MAGE_NUM_STEPS`
-- `VIDEO_MAGE_NUM_FRAMES`
-- `VIDEO_MAGE_VIDEO_SIZE_H`
-- `VIDEO_MAGE_VIDEO_SIZE_W`
-- `VIDEO_MAGE_WINDOW_SIZE`
-
-Geometry contract:
-
-- `VIDEO_MAGE_VIDEO_SIZE_H` and `VIDEO_MAGE_VIDEO_SIZE_W` must be divisible by `16`.
-- Prefer `VIDEO_MAGE_NUM_FRAMES` in multiples of `24` for chunk-aligned outputs.
-
-### Latest Validated Profiles
-
-- Ultra-cheap proof-of-life (1 chunk):
-
-  ```bash
-  cd VideoDiffusion
-  VIDEO_MAGE_PROMPT="Slow dolly shot through a busy cyberpunk alley at night, neon signs flickering, light rain, passing cars and pedestrians moving" \
-  VIDEO_MAGE_OUTPUT=magi_try.mp4 \
-  VIDEO_MAGE_FP8=auto \
-  VIDEO_MAGE_CONFIG=example/4.5B/4.5B_distill_quant_config.json \
-  VIDEO_MAGE_VISIBLE_DEVICES=0 \
-  VIDEO_MAGE_NPROC=1 \
-  VIDEO_MAGE_NUM_FRAMES=24 \
-  VIDEO_MAGE_NUM_STEPS=8 \
-  VIDEO_MAGE_WINDOW_SIZE=1 \
-  VIDEO_MAGE_VIDEO_SIZE_H=384 \
-  VIDEO_MAGE_VIDEO_SIZE_W=384 \
-  bash ./test_single_chunk.sh
-  ```
-
-- Non-quant (reliable smoke + motion profile):
-
-  ```bash
-  cd VideoDiffusion
-  VIDEO_MAGE_WEIGHT_VARIANT=4.5B_distill bash download_weights.sh
-  VIDEO_MAGE_FP8=0 \
-  VIDEO_MAGE_CONFIG=example/4.5B/4.5B_distill_config.json \
-  VIDEO_MAGE_PROMPT="Slow dolly shot through a busy cyberpunk alley at night, neon signs flickering, light rain, passing cars and pedestrians moving" \
-  VIDEO_MAGE_OUTPUT=magi_dynamic_nonquant.mp4 \
-  VIDEO_MAGE_VISIBLE_DEVICES=0 \
-  VIDEO_MAGE_NPROC=1 \
-  bash ./test_single_chunk.sh
-  ```
-
-- Quant (fallback compatibility smoke):
-
-  ```bash
-  VIDEO_MAGE_FP8=auto \
-  VIDEO_MAGE_CONFIG=example/4.5B/4.5B_distill_quant_config.json \
-  VIDEO_MAGE_PROMPT="Neon city, cinematic cyberpunk alleyway at dusk" \
-  VIDEO_MAGE_OUTPUT=magi_try.mp4 \
-  VIDEO_MAGE_VISIBLE_DEVICES=0 \
-  VIDEO_MAGE_NPROC=1 \
-  bash ./test_single_chunk.sh
-  ```
-
-For A6000/SM86-class pods, keep `VIDEO_MAGE_FP8=0` (or rely on `auto` in `test_single_chunk.sh`) for deterministic smoke completion.
-
-### Longer / more dynamic generation profiles
-
-- 4-second dynamic shot (4 chunks):
-
-  ```bash
-  VIDEO_MAGE_PROMPT="Handheld tracking shot through a dense cyberpunk market at night, neon reflections in wet pavement, moving crowd, animated holograms, drifting steam, parallax signage, passing bikes, cinematic motion blur" \
-  VIDEO_MAGE_OUTPUT=magi_dynamic_4s.mp4 \
-  VIDEO_MAGE_FP8=auto \
-  VIDEO_MAGE_CONFIG=example/4.5B/4.5B_distill_quant_config.json \
-  VIDEO_MAGE_VISIBLE_DEVICES=0 \
-  VIDEO_MAGE_NPROC=1 \
-  VIDEO_MAGE_NUM_FRAMES=96 \
-  VIDEO_MAGE_NUM_STEPS=12 \
-  VIDEO_MAGE_WINDOW_SIZE=1 \
-  VIDEO_MAGE_VIDEO_SIZE_H=512 \
-  VIDEO_MAGE_VIDEO_SIZE_W=512 \
-  bash ./test_single_chunk.sh
-  ```
-
-- 8-second complex shot (8 chunks, recommended to start with 2 GPUs):
-
-  ```bash
-  VIDEO_MAGE_PROMPT="Slow aerial descent into a rainy megacity boulevard at dusk, layered traffic flow, pedestrians with umbrellas, volumetric fog, flickering billboards, depth-rich parallax, long-lens cinematic movement" \
-  VIDEO_MAGE_OUTPUT=magi_complex_8s.mp4 \
-  VIDEO_MAGE_FP8=auto \
-  VIDEO_MAGE_CONFIG=example/4.5B/4.5B_distill_quant_config.json \
-  VIDEO_MAGE_VISIBLE_DEVICES=0,1 \
-  VIDEO_MAGE_NPROC=2 \
-  VIDEO_MAGE_NUM_FRAMES=192 \
-  VIDEO_MAGE_NUM_STEPS=16 \
-  VIDEO_MAGE_WINDOW_SIZE=1 \
-  VIDEO_MAGE_VIDEO_SIZE_H=640 \
-  VIDEO_MAGE_VIDEO_SIZE_W=640 \
-  bash ./test_single_chunk.sh
-  ```
-
-### Stream-time dynamic prompt behavior contract
-
-- Prompt updates are chunk-boundary gated by design.
-- For lowest prompt-to-visual latency:
-  - keep `MAGI_WINDOW_SIZE=1`
-  - keep `QUEUE_LEN` small (`~96`)
-  - keep `DROP_OLD_ON_PROMPT=1`
-- For throughput-focused runs:
-  - larger `MAGI_WINDOW_SIZE` can improve throughput but increases prompt response lag.
-
-### Scripted 30-second prompt-injection workflow
-
-- Schedule source: `VideoDiffusion/prompt_schedules/cyberpunk_30s_hybrid.csv`
-- Schedule runner: `VideoDiffusion/run_prompt_schedule.py`
-- End-to-end orchestrator: `VideoDiffusion/test_scripted_30s.sh`
-- Prime lifecycle wrapper: `VideoDiffusion/run_scripted_30s_prime.sh`
-- Prime matrix runner: `VideoDiffusion/run_prime_gpu_matrix.sh`
-- Offer/query scripts: `scripts/prime/query_magi_offers.py`, `scripts/prime/select_magi_offer.py`
-- Lifecycle scripts: `scripts/prime/provision_magi_pod.sh`, `scripts/prime/run_magi_remote.sh`, `scripts/prime/terminate_magi_pod.sh`
-- Policy file: `scripts/prime/magi_gpu_policies.json`
-- Budget guard:
-  - `BUDGET_USD` default `15`
-  - requires `HOURLY_RATE_USD`
-  - computes `max_runtime_sec = floor((BUDGET_USD * 0.90 / HOURLY_RATE_USD) * 3600)`
-- Calibration ladder before final 30-second output:
-  1. `4.5b` tier: `1 -> 3 -> 4` GPUs (6 chunks per rung)
-  2. `24b` tier: `4 -> 8` GPUs (6 chunks per rung)
-- Selection rule:
-  - pick smallest rung with steady-state `p90 TPOC <= 1.0s`
-
-### Multi-GPU scaling contract (single node)
-
-- `test_single_chunk.sh`:
-  - set `VIDEO_MAGE_VISIBLE_DEVICES` to the exact GPU list
-  - set `VIDEO_MAGE_NPROC` to the same device count (or `auto`)
-- `realtime_magi_stream.py`:
-  - prefer `torchrun --standalone --nproc_per_node=<N> realtime_magi_stream.py`
-  - set `MAGI_CP_SIZE=<N>`, `MAGI_PP_SIZE=1` for context-parallel experiments
-- Increase GPU count only after confirming latency bottleneck remains after reducing resolution/steps.
-
-### Video validation checks
-
-- Confirm that output has expected length/frame count:
-
-  ```bash
-  ffprobe -v error -count_frames -select_streams v:0 \
-    -show_entries stream=nb_read_frames,duration \
-    -of default=noprint_wrappers=1:nokey=0 VideoDiffusion/magi_dynamic_nonquant.mp4
-  ```
-
-- Detect near-static results:
-
-  ```bash
-  ffmpeg -hide_banner -i VideoDiffusion/magi_dynamic_nonquant.mp4 -vf mpdecimate -f null -
-  ```
-
-  If most input frames are dropped, switch to an explicit motion prompt.
-
-Do not combine `4.5B_distill_config.json` with quant checkpoints (`4.5B_distill_quant/*`) unless you have intentionally remapped all paths.
-
-## Update Workflow (When You Change Infra)
-
-Any workflow change must update in lockstep:
-
-1. Update implementation script in `ImageDiffusion/` or `VideoDiffusion/`.
-2. Update the relevant source-of-truth doc in `docs/`.
-3. Update `docs/video-magi1-observations.md` with empirical outcome/tuning notes for the change.
-4. Update Prime lifecycle implementation in `scripts/prime/` when provider contracts or selection logic change.
-5. Update `docs/cloudflare-r2.md` when cache/artifact layout or storage tooling changes.
-6. Update `docs/accelerate.md` when startup/build/caching strategy changes.
-7. Update `docs/prime-intellect.md` if provider/cost behavior changes.
-8. Keep all provider-specific legacy guidance in `docs/legacy/` only.
-
-Lockstep empirical rule:
-
-1. Every matrix or lifecycle run that changes infra/runtime behavior must update:
-2. implementation script(s),
-3. source-of-truth runbook(s),
-4. `docs/video-magi1-observations.md` run outcomes + tuning decisions.
-
-## Validation Gate (Minimum)
-
-Run before handing over any branch:
-
-- `bash -n ImageDiffusion/*.sh scripts/prime/*.sh VideoDiffusion/*.sh`
-- `python3 -m py_compile ImageDiffusion/realtime_stream.py VideoDiffusion/realtime_magi_stream.py`
-- `bash -lc "prime pods status <PRIME_POD_ID>"` (or equivalent health check)
-
-## Cost Control
-
-- Keep pods alive only while testing and terminate immediately once smoke tests pass.
-- Default to one-GPU pathways for smoke tests; scale up explicitly via environment variables.
-- First run on fresh pods may include one-time kernel JIT compilation cost/time; budget for this warm-up before throughput measurements.
-- Use `prime pods terminate <POD_ID> --yes` for explicit spend stop (current CLI has no `prime pods stop` command).
-
-## Legacy Archive Rule
-
-- New instructions must be written under `docs/`.
-- `docs/legacy/` is historical context only and should not be referenced by onboarding docs.
+If a paid instance was created, final handoff must include teardown status and whether local video/log pullback succeeded.

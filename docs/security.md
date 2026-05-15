@@ -3,6 +3,7 @@
 ## Do not commit
 
 - `config/prime.env`
+- `config/vast.env`
 - `config/instances/*`
 - `ssh_*.json` and personal SSH material
 - `*.log`
@@ -11,9 +12,10 @@
 
 ## Required handling
 
-- Store Prime keys in CLI or env-only config:
+- Store provider keys in CLI or env-only config:
   - `~/.prime/config.json`
   - `prime config set-api-key`
+  - `vastai set api-key <KEY>`
 - Keep private keys at `~/.ssh/*` with restricted permissions (`chmod 600`).
 - If a secret was ever committed, rotate immediately and scrub history if the repo is shared.
 

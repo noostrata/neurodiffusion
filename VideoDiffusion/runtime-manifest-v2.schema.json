@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neurodiffusion.local/schemas/runtime-manifest-v2.schema.json",
+  "title": "Video Runtime Manifest v2 (MAGI + Krea)",
+  "type": "object",
+  "required": [
+    "runtime_tag",
+    "video_model",
+    "attn_backend",
+    "git_commit",
+    "cuda_stack",
+    "artifact_checksums",
+    "tier_support"
+  ],
+  "properties": {
+    "runtime_tag": {
+      "type": "string",
+      "minLength": 1
+    },
+    "video_model": {
+      "type": "string",
+      "enum": [
+        "magi",
+        "krea"
+      ]
+    },
+    "attn_backend": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "sage",
+        "flash",
+        "sdpa"
+      ]
+    },
+    "git_commit": {
+      "type": "string"
+    },
+    "cuda_stack": {
+      "type": "object",
+      "required": [
+        "python",
+        "torch",
+        "cuda",
+        "gpu_name",
+        "sm"
+      ],
+      "properties": {
+        "python": {
+          "type": "string"
+        },
+        "torch": {
+          "type": "string"
+        },
+        "cuda": {
+          "type": "string"
+        },
+        "gpu_name": {
+          "type": "string"
+        },
+        "sm": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "artifact_checksums": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "tier_support": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "validated_profiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "build_gpu_class": {
+      "type": "string"
+    },
+    "model_shard_checksums": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

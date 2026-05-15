@@ -25,7 +25,7 @@ Then open:
     http://<host>:8000
 """
 
-import io, time, threading, queue, os, sys, json
+import io, time, threading, queue, os, sys, json, traceback
 from pathlib import Path
 
 import numpy as np
@@ -145,6 +145,10 @@ def _patch_config_file(src_path: str) -> str:
         if isinstance(raw, str) and raw.startswith("./"):
             runtime[key] = str(MAGI_DIR / raw[2:])
 
+    t5_device = os.environ.get("MAGI_T5_DEVICE", os.environ.get("VIDEO_MAGE_T5_DEVICE"))
+    if t5_device:
+        runtime["t5_device"] = t5_device.strip()
+
     # Throughput knobs (testing): override without editing vendor files.
     for env_key, cfg_key in (
         ("MAGI_NUM_STEPS", "num_steps"),
@@ -168,8 +172,19 @@ def _patch_config_file(src_path: str) -> str:
     elif fp8_override in {"1", "true", "on", "yes"}:
         engine["fp8_quant"] = True
     elif fp8_override in {"auto", ""}:
-        # Leave config default; MAGI-1 kernels may still vary by GPU arch.
-        pass
+        # Match test_single_chunk.sh behavior:
+        # enable fp8 only on Hopper-class GPUs (sm90+) when detectable.
+        try:
+            import torch
+
+            if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+                caps = [torch.cuda.get_device_capability(i) for i in range(torch.cuda.device_count())]
+                has_sm90 = any((major >= 9) for major, _minor in caps)
+                engine["fp8_quant"] = bool(has_sm90)
+            else:
+                engine["fp8_quant"] = cfg.get("engine_config", {}).get("fp8_quant", True)
+        except Exception:
+            engine["fp8_quant"] = cfg.get("engine_config", {}).get("fp8_quant", True)
     else:
         raise SystemExit(f"Unsupported MAGI_FP8/VIDEO_MAGE_FP8='{fp8_override}'. Use 0/1/true/false/auto.")
 
@@ -319,8 +334,9 @@ def producer_loop():
                 cap1, mask1 = _compute_one_chunk_caption(prompt_text)
                 remaining = transport_input.chunk_num - start_chunk_idx
                 # y layout: [cond, uncond] x [chunk] x [token] x [dim]
-                transport_input.y[0:1, start_chunk_idx:] = cap1.expand(1, remaining, -1, -1)
-                transport_input.emb_masks[0:1, start_chunk_idx:] = mask1.expand(1, remaining, -1)
+                with torch.inference_mode():
+                    transport_input.y[0:1, start_chunk_idx:].copy_(cap1.expand(1, remaining, -1, -1))
+                    transport_input.emb_masks[0:1, start_chunk_idx:].copy_(mask1.expand(1, remaining, -1))
                 applied_prompt = prompt_text
 
             while not producer_stop_event.is_set():
@@ -396,7 +412,8 @@ def producer_loop():
                     _apply_prompt_from(start_chunk_idx=int(chunk_idx) + 1, prompt_text=next_prompt)
 
         except Exception as e:
-            print(f"[producer] Error in generation loop: {e}")
+            print(f"[producer] Error in generation loop: {e!r}")
+            traceback.print_exc()
             STATS_STATE.update(last_error=str(e))
             # Decide how to handle errors, e.g., retry, log, exit?
             time.sleep(1) # Avoid rapid failure loops

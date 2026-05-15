@@ -1,3 +1,0 @@
-run_idx,run_tag,availability_id,gpu_type,gpu_count,region,provider,hourly_rate_usd,budget_slice_usd,cost_estimate_usd,steady_tpoc_p90_s,cue_fidelity_ratio,pass,exit_code,status,summary_json
-1,matrix_4p5b_1_200021,0ca953,A100 80GB (Spot),1,eu_north,datacrunch,0.4515,0.4,0,,,0,0,DRY_RUN,
-2,matrix_4p5b_2_200021,f7619e,A6000 48GB,1,eu_north,datacrunch,0.49,0.4,0,,,0,0,DRY_RUN,

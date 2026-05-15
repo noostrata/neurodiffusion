@@ -2,27 +2,32 @@
 
 _Last updated: 2026-05-15_
 
-This is the prepared no-live-run path for using Daydream Scope with the LongLive realtime video pipeline.
-It is designed for the final OpenBCI EEG control target, but this document intentionally stops before any paid GPU launch or model download.
+This is the operator path for using Daydream Scope with the LongLive realtime video pipeline.
+It is designed for the final OpenBCI EEG control target: Scope owns WebRTC/video, while the EEG process owns OSC control updates.
 
 ## Current status
 
-Implemented local preparation:
+Validated:
 
 1. model selector accepts `VIDEO_MODEL=scope` and `VIDEO_MODEL=longlive` as aliases for the Scope runtime;
 2. Scope setup, model download, server launch, and pipeline-load scripts exist under `VideoDiffusion/`;
 3. a stdlib Scope REST client can load/poll `/api/v1/pipeline/*`;
 4. a stdlib OSC client can drive Scope runtime parameters such as `/scope/prompt`;
 5. the EEG session runner has a `scope` sink for live neurofeedback control;
-6. a fake Scope HTTP+OSC server is covered by the no-cost EEG selftest.
+6. a fake Scope HTTP+OSC server is covered by the no-cost EEG selftest;
+7. a B200 Vast run sustained realtime WebRTC receive with synthetic EEG steering.
 
-Not yet validated:
+Still not validated:
 
-1. real Scope dependency build on a GPU host;
-2. LongLive model download;
-3. WebRTC video display on a remote instance;
-4. real OpenBCI hardware input;
-5. actual Scope/LongLive FPS or prompt-change latency on Vast.
+1. real OpenBCI hardware input;
+2. cheaper `RTX 4090` / `RTX 5090` / `L40S` Scope throughput;
+3. long-duration gallery/session stability beyond the 90s synthetic EEG run.
+
+Latest empirical reference:
+
+- `docs/video-scope-longlive-observations.md`
+- runtime tuple: `scope_auto_py312_torch2.9.1_cu128_sm100`
+- recorded local video: `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4`
 
 ## Why Scope + LongLive
 
@@ -46,11 +51,13 @@ VIDEO_MODEL=scope bash VideoDiffusion/setup_video_runtime.sh
 # Or call the Scope setup directly.
 bash VideoDiffusion/setup_scope.sh
 
-# Download LongLive models after setup.
+# Download LongLive models after setup. For LongLive this uses the repo
+# deterministic downloader because Scope's upstream downloader returned no
+# artifacts in the 2026-05-15 B200 run.
 bash VideoDiffusion/download_scope_models.sh
 
-# Start the Scope server.
-VIDEO_MODEL=scope bash VideoDiffusion/run_video_stream.sh
+# Start the Scope server without auto-loading LongLive.
+SCOPE_AUTO_LOAD=0 VIDEO_MODEL=scope bash VideoDiffusion/run_video_stream.sh
 
 # Request LongLive pipeline load after the server is reachable.
 bash VideoDiffusion/load_scope_longlive.sh
@@ -66,12 +73,61 @@ SCOPE_REPO_REF=main
 SCOPE_SRC_DIR=VideoDiffusion/.vendors/daydream-scope
 SCOPE_PIPELINE=longlive
 SCOPE_PORT=8000
+SCOPE_AUTO_LOAD=0
+SCOPE_APPLY_PATCHES=1
 DAYDREAM_SCOPE_MODELS_DIR=VideoDiffusion/.cache/daydream-scope/models
 DAYDREAM_SCOPE_LOGS_DIR=VideoDiffusion/.cache/daydream-scope/logs
 DAYDREAM_SCOPE_PLUGINS_DIR=VideoDiffusion/.cache/daydream-scope/plugins
 ```
 
 Use `SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh` when you only want to clone Scope and write the ignored runtime env file without installing heavy dependencies.
+Use `SCOPE_INCLUDE_VACE=1 bash VideoDiffusion/download_scope_models.sh` only when you intend to load VACE; the validated realtime text path keeps VACE disabled.
+
+Scope patches:
+
+1. `setup_scope.sh` applies `VideoDiffusion/patches/daydream-scope/*.patch` by default.
+2. The current patch keeps the WebRTC video track alive for text-to-video sessions with no incoming browser video source.
+3. Set `SCOPE_APPLY_PATCHES=0` only when intentionally testing unmodified upstream Scope.
+
+## R2 Fast Boot
+
+The reusable Scope/LongLive prebuild is a tuple cache, not a warm model process.
+It stores the Scope uv env and the LongLive/Wan model cache in R2.
+It cannot store a loaded GPU model; a fresh instance still needs Scope server start and explicit pipeline load.
+
+Validated tuple:
+
+```text
+scope_auto_py312_torch2.9.1_cu128_sm100
+```
+
+Fast restore on a fresh Vast host:
+
+```bash
+cd /workspace/neurodiffusion
+SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh
+bash VideoDiffusion/restore_r2_prebuild_model.sh \
+  --model scope \
+  --mode tuple \
+  --runtime-tag scope_auto_py312_torch2.9.1_cu128_sm100 \
+  --extract-weights
+SCOPE_AUTO_LOAD=0 bash VideoDiffusion/run_scope_server.sh --host 0.0.0.0 --port 8000 -N
+SCOPE_VACE_ENABLED=false bash VideoDiffusion/load_scope_longlive.sh
+```
+
+For the next tuple publish, prefer a faster archive setting for model cache:
+
+```bash
+bash VideoDiffusion/publish_r2_prebuild_model.sh \
+  --model scope \
+  --runtime-tag scope_auto_py312_torch2.9.1_cu128_sm100 \
+  --include-weights \
+  --env-compression zstd \
+  --weights-compression none
+```
+
+Use `--env-compression gzip` if `zstd` is not installed.
+Plain tar for weights is intentional: the large model shards are already compressed and gzip adds boot-pipeline wall time for little size gain.
 
 ## Scope API contract
 
@@ -114,7 +170,21 @@ python3 VideoDiffusion/scope_pipeline.py \
 ```
 
 Video display remains Scope/WebRTC-native.
-The EEG process does not try to own WebRTC; it sends control updates over OSC while the Scope UI or a browser WebRTC client receives video.
+The EEG process does not try to own WebRTC; it sends control updates over OSC while the Scope UI or a browser/WebRTC client receives video.
+
+Headless WebRTC benchmark/capture:
+
+```bash
+python3 VideoDiffusion/scope_webrtc_benchmark.py \
+  --base-url http://127.0.0.1:8000 \
+  --pipeline-id longlive \
+  --duration-s 30 \
+  --output-video VideoDiffusion/.tmp/scope_webrtc_capture.mp4 \
+  --frames-dir VideoDiffusion/.tmp/scope_frames
+```
+
+This client is for automated validation and local artifact capture.
+It is not the EEG control loop.
 
 ## EEG control path
 
@@ -199,22 +269,35 @@ python3 scripts/vast/select_video_offer.py \
   --print-env
 ```
 
-For first live Scope/LongLive validation, prefer cheap `RTX 4090 24GB`, `RTX 5090 32GB`, or `L40S 48GB`-class offers before H100/H200.
+For first cheap follow-up Scope/LongLive validation, prefer `RTX 4090 24GB`, `RTX 5090 32GB`, or `L40S 48GB`-class offers before H100/H200/B200.
 Do not create an instance unless the user explicitly authorizes a paid run.
 
-## First future live-run checklist
+## Validated Vast live-run checklist
 
 1. Query Scope offers and choose a cost target.
 2. Provision one Vast instance with port `8000` exposed.
 3. Sync the repo to the instance.
-4. Run `VIDEO_MODEL=scope bash VideoDiffusion/setup_video_runtime.sh`.
-5. Run `bash VideoDiffusion/download_scope_models.sh`.
-6. Start `VIDEO_MODEL=scope bash VideoDiffusion/run_video_stream.sh`.
-7. Open Scope UI/WebRTC output on port `8000`.
-8. Run `bash VideoDiffusion/load_scope_longlive.sh`.
+4. Run `SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh` and restore the R2 tuple, or run full `VIDEO_MODEL=scope bash VideoDiffusion/setup_video_runtime.sh` when rebuilding from scratch.
+5. Run `bash VideoDiffusion/download_scope_models.sh` only if the R2 model cache was not restored or intentionally needs refresh.
+6. Start `SCOPE_AUTO_LOAD=0 VIDEO_MODEL=scope bash VideoDiffusion/run_video_stream.sh`.
+7. Run `SCOPE_VACE_ENABLED=false bash VideoDiffusion/load_scope_longlive.sh`.
+8. Run `VideoDiffusion/scope_webrtc_benchmark.py` or open Scope UI/WebRTC output on port `8000`.
 9. Run mock EEG into `--sink scope`.
-10. Record latency notes and logs.
-11. Tear down the instance and verify `vastai show instances --raw`.
+10. Record latency notes, output video, sampled frames, and logs.
+11. Pull local video/log artifacts.
+12. Tear down the instance and verify `vastai show instances --raw`.
+
+## Latest B200 Results
+
+Observed on 2026-05-15:
+
+1. LongLive loaded at `320x576`, no VACE, in about `19s` after server start.
+2. 90s WebRTC receive: `2203` frames, `24.868 fps`, first frame `1.507s`.
+3. 30s recorded WebRTC capture: `743` frames, `25.040 fps`, first frame `0.579s`.
+4. Synthetic EEG `balancer` policy sent Scope OSC updates successfully during generation.
+5. Local MP4: `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4`.
+6. R2 tuple: `scope_auto_py312_torch2.9.1_cu128_sm100`.
+7. Current fresh-instance lower bound after tuple restore is still server start plus load: about `7s + 19s` in the B200 run, before WebRTC first-frame latency.
 
 ## Sources
 

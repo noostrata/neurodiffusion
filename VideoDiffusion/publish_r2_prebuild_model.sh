@@ -33,6 +33,8 @@ ALLOW_MISSING_IMAGE="${ALLOW_MISSING_IMAGE:-1}"
 KEEP_TMP="${KEEP_TMP:-0}"
 VENV_DIR="${VENV_DIR:-}"
 WEIGHTS_DIR="${WEIGHTS_DIR:-}"
+R2_ENV_ARCHIVE_COMPRESSION="${R2_ENV_ARCHIVE_COMPRESSION:-gzip}"
+R2_WEIGHTS_ARCHIVE_COMPRESSION="${R2_WEIGHTS_ARCHIVE_COMPRESSION:-gzip}"
 
 usage() {
   cat <<'EOF'
@@ -40,7 +42,7 @@ Usage:
   bash VideoDiffusion/publish_r2_prebuild_model.sh [options]
 
 Options:
-  --model <magi|krea>            Runtime model selector
+  --model <magi|krea|scope>      Runtime model selector
   --attn-backend <mode>          auto|sage|flash|sdpa (krea metadata + dispatch)
   --runtime-tag <tag>            Runtime tuple tag override
   --tiers <csv>                  Tier support metadata
@@ -54,6 +56,8 @@ Options:
   --allow-missing-env            Do not fail when venv is missing
   --allow-missing-weights        Do not fail when weights/cache is missing
   --allow-missing-image          Do not fail when image archive is missing
+  --env-compression <mode>       gzip|zstd|none (default: gzip)
+  --weights-compression <mode>   gzip|zstd|none (default: gzip)
   --keep-tmp                     Keep local staging directory
 EOF
 }
@@ -115,6 +119,14 @@ while [[ $# -gt 0 ]]; do
     --allow-missing-image)
       ALLOW_MISSING_IMAGE="1"
       shift
+      ;;
+    --env-compression)
+      R2_ENV_ARCHIVE_COMPRESSION="$2"
+      shift 2
+      ;;
+    --weights-compression)
+      R2_WEIGHTS_ARCHIVE_COMPRESSION="$2"
+      shift 2
       ;;
     --keep-tmp)
       KEEP_TMP="1"
@@ -189,13 +201,25 @@ fi
 PYTHON_BIN="$(r2_ensure_python_with_boto3 1)"
 
 if [[ -z "${VENV_DIR}" ]]; then
-  VENV_DIR="${SCRIPT_DIR}/.venv-krea"
+  if [[ "${VIDEO_MODEL}" == "scope" ]]; then
+    VENV_DIR="${SCRIPT_DIR}/.vendors/daydream-scope/.venv"
+  else
+    VENV_DIR="${SCRIPT_DIR}/.venv-krea"
+  fi
 fi
 if [[ -z "${WEIGHTS_DIR}" ]]; then
-  WEIGHTS_DIR="${SCRIPT_DIR}/.cache/krea"
+  if [[ "${VIDEO_MODEL}" == "scope" ]]; then
+    WEIGHTS_DIR="${SCRIPT_DIR}/.cache/daydream-scope"
+  else
+    WEIGHTS_DIR="${SCRIPT_DIR}/.cache/krea"
+  fi
 fi
 if [[ -z "${VALIDATED_PROFILES}" ]]; then
-  VALIDATED_PROFILES="krea_realtime_smoke"
+  if [[ "${VIDEO_MODEL}" == "scope" ]]; then
+    VALIDATED_PROFILES="scope_longlive_realtime_smoke"
+  else
+    VALIDATED_PROFILES="krea_realtime_smoke"
+  fi
 fi
 
 RUN_ID="prebuild_${VIDEO_MODEL}_$(date -u +%Y%m%dT%H%M%SZ)"
@@ -208,6 +232,68 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+normalize_archive_compression() {
+  local raw
+  raw="$(to_lower "${1:-gzip}")"
+  case "${raw}" in
+    gzip|gz)
+      printf 'gzip\n'
+      ;;
+    zstd|zst)
+      printf 'zstd\n'
+      ;;
+    none|tar)
+      printf 'none\n'
+      ;;
+    *)
+      echo "[error] unsupported archive compression '${1}'. Use gzip, zstd, or none." >&2
+      return 1
+      ;;
+  esac
+}
+
+archive_extension_for() {
+  case "$1" in
+    gzip) printf '.tar.gz' ;;
+    zstd) printf '.tar.zst' ;;
+    none) printf '.tar' ;;
+    *)
+      echo "[error] unsupported archive compression '$1'." >&2
+      return 1
+      ;;
+  esac
+}
+
+create_archive() {
+  local compression="$1"
+  local archive_path="$2"
+  local parent_dir="$3"
+  local base_name="$4"
+
+  case "${compression}" in
+    gzip)
+      tar -czf "${archive_path}" -C "${parent_dir}" "${base_name}"
+      ;;
+    zstd)
+      if ! command_exists zstd; then
+        echo "[error] zstd compression requested but zstd is not installed." >&2
+        return 1
+      fi
+      tar -cf - -C "${parent_dir}" "${base_name}" | zstd -T0 -3 -o "${archive_path}"
+      ;;
+    none)
+      tar -cf "${archive_path}" -C "${parent_dir}" "${base_name}"
+      ;;
+    *)
+      echo "[error] unsupported archive compression '${compression}'." >&2
+      return 1
+      ;;
+  esac
+}
+
+R2_ENV_ARCHIVE_COMPRESSION="$(normalize_archive_compression "${R2_ENV_ARCHIVE_COMPRESSION}")"
+R2_WEIGHTS_ARCHIVE_COMPRESSION="$(normalize_archive_compression "${R2_WEIGHTS_ARCHIVE_COMPRESSION}")"
 
 if [[ -z "${RUNTIME_TAG}" ]]; then
   DETECT_PY="${PYTHON_BIN}"
@@ -241,6 +327,7 @@ fi
 
 video_log "runtime_tag=${RUNTIME_TAG}"
 video_log "model=${VIDEO_MODEL} attn=${ATTN_BACKEND} tiers=${TIERS}"
+video_log "archive_compression env=${R2_ENV_ARCHIVE_COMPRESSION} weights=${R2_WEIGHTS_ARCHIVE_COMPRESSION}"
 video_log "staging=${TMP_DIR}"
 
 WHEELHOUSE_DIR="${TMP_DIR}/wheelhouse"
@@ -253,16 +340,23 @@ WEIGHT_SHARD_CHECKSUMS_JSON="${TMP_DIR}/weight_shards_${RUNTIME_TAG}.json"
 if [[ -d "${VENV_DIR}" ]]; then
   VENV_PARENT="$(cd -- "$(dirname -- "${VENV_DIR}")" && pwd)"
   VENV_BASE="$(basename -- "${VENV_DIR}")"
-  ENV_ARCHIVE="${TMP_DIR}/venv_${RUNTIME_TAG}.tar.gz"
-  tar -czf "${ENV_ARCHIVE}" -C "${VENV_PARENT}" "${VENV_BASE}"
+  ENV_ARCHIVE="${TMP_DIR}/venv_${RUNTIME_TAG}$(archive_extension_for "${R2_ENV_ARCHIVE_COMPRESSION}")"
+  create_archive "${R2_ENV_ARCHIVE_COMPRESSION}" "${ENV_ARCHIVE}" "${VENV_PARENT}" "${VENV_BASE}"
 
   if [[ -x "${VENV_DIR}/bin/python" ]]; then
-    "${VENV_DIR}/bin/python" -m pip freeze > "${TMP_DIR}/pip_freeze_${RUNTIME_TAG}.txt" || true
-    CACHE_DIR="$("${VENV_DIR}/bin/python" -m pip cache dir 2>/dev/null || true)"
-    if [[ -n "${CACHE_DIR}" && -d "${CACHE_DIR}" ]]; then
-      while IFS= read -r whl; do
-        cp -f "${whl}" "${WHEELHOUSE_DIR}/"
-      done < <(find "${CACHE_DIR}" -type f -name '*.whl' | head -n 1200)
+    PIP_FREEZE="${TMP_DIR}/pip_freeze_${RUNTIME_TAG}.txt"
+    if "${VENV_DIR}/bin/python" -m pip --version >/dev/null 2>&1; then
+      "${VENV_DIR}/bin/python" -m pip freeze > "${PIP_FREEZE}" || true
+      CACHE_DIR="$("${VENV_DIR}/bin/python" -m pip cache dir 2>/dev/null || true)"
+      if [[ -n "${CACHE_DIR}" && -d "${CACHE_DIR}" ]]; then
+        while IFS= read -r whl; do
+          cp -f "${whl}" "${WHEELHOUSE_DIR}/"
+        done < <(find "${CACHE_DIR}" -type f -name '*.whl' | head -n 1200)
+      fi
+    elif command_exists uv; then
+      uv pip freeze --python "${VENV_DIR}/bin/python" > "${PIP_FREEZE}" || true
+    else
+      : > "${PIP_FREEZE}"
     fi
   fi
 elif [[ "${ALLOW_MISSING_ENV}" != "1" ]]; then
@@ -274,8 +368,8 @@ if [[ "${INCLUDE_WEIGHTS}" == "1" ]]; then
   if [[ -d "${WEIGHTS_DIR}" ]]; then
     WEIGHTS_PARENT="$(cd -- "$(dirname -- "${WEIGHTS_DIR}")" && pwd)"
     WEIGHTS_BASE="$(basename -- "${WEIGHTS_DIR}")"
-    WEIGHTS_ARCHIVE="${TMP_DIR}/weights_${RUNTIME_TAG}.tar.gz"
-    tar -czf "${WEIGHTS_ARCHIVE}" -C "${WEIGHTS_PARENT}" "${WEIGHTS_BASE}"
+    WEIGHTS_ARCHIVE="${TMP_DIR}/weights_${RUNTIME_TAG}$(archive_extension_for "${R2_WEIGHTS_ARCHIVE_COMPRESSION}")"
+    create_archive "${R2_WEIGHTS_ARCHIVE_COMPRESSION}" "${WEIGHTS_ARCHIVE}" "${WEIGHTS_PARENT}" "${WEIGHTS_BASE}"
 
     "${PYTHON_BIN}" - "${WEIGHTS_DIR}" "${WEIGHT_SHARD_CHECKSUMS_JSON}" <<'PY'
 import hashlib

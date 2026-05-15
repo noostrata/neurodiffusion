@@ -15,7 +15,8 @@ This repository is operator-first. Scripts and docs should make GPU work determi
 - `docs/vastai.md` — current Vast provisioning, SSH, lifecycle, and teardown source of truth.
 - `docs/video-magi1-streaming.md` — MAGI-1 setup, weights, smoke, stream, prompt, and validation source of truth.
 - `docs/video-magi1-observations.md` — empirical MAGI outcomes, failures, fixes, and tuning notes.
-- `docs/video-scope-longlive-streaming.md` — Daydream Scope + LongLive realtime setup, OSC control, fake tests, and future Vast runbook.
+- `docs/video-scope-longlive-streaming.md` — Daydream Scope + LongLive realtime setup, OSC control, WebRTC validation, and Vast runbook.
+- `docs/video-scope-longlive-observations.md` — empirical Scope + LongLive outcomes, fixes, R2 tuple, local artifacts, and tuning notes.
 - `docs/eeg-openbci-control.md` — OpenBCI/BrainFlow EEG control path.
 - `docs/cloudflare-r2.md` — R2 cache/artifact layout.
 - `docs/accelerate.md` — acceleration/build/cache strategy.
@@ -85,10 +86,18 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
   - `VideoDiffusion/download_scope_models.sh`
   - `VideoDiffusion/run_scope_server.sh`
   - `VideoDiffusion/load_scope_longlive.sh`
+  - `VideoDiffusion/scope_webrtc_benchmark.py`
+- Latest validated Scope tuple: `scope_auto_py312_torch2.9.1_cu128_sm100` for B200 / SM100.
+- R2 prebuild can restore the Scope uv env and LongLive/Wan model cache; it cannot preserve a live loaded GPU model.
+- For a fast fresh boot: clone repo, run `SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh`, restore the Scope tuple, start with `SCOPE_AUTO_LOAD=0`, then load LongLive with `SCOPE_VACE_ENABLED=false`.
+- `VideoDiffusion/setup_scope.sh` applies repo patches from `VideoDiffusion/patches/daydream-scope/` by default. Use `SCOPE_APPLY_PATCHES=0` only when intentionally testing unmodified upstream Scope.
+- `VideoDiffusion/download_scope_models.sh` uses the repo deterministic LongLive downloader because upstream Scope did not declare downloadable artifacts for `longlive` during the B200 validation.
+- Keep VACE disabled for the validated no-VACE text-mode realtime path unless intentionally downloading and testing VACE weights.
 - Scope REST controls pipeline lifecycle; OSC controls live runtime parameters.
 - EEG should drive Scope through the `scope` sink, which sends OSC updates to `/scope/prompt`, `/scope/noise_scale`, `/scope/transition_steps`, and related runtime controls.
 - Use `VideoDiffusion/eeg_control/fake_scope_server.py` and `python3 VideoDiffusion/eeg_control/selftest.py` before any paid Scope run.
 - Do not attempt to embed WebRTC inside the EEG loop. Let Scope UI or a browser/WebRTC client own video display; the EEG loop owns control.
+- For headless GPU validation, use `VideoDiffusion/scope_webrtc_benchmark.py` and synthetic EEG concurrently, then pull the recorded MP4 and sampled frames before teardown.
 
 ## Local Artifact Rule
 
@@ -149,10 +158,11 @@ When changing runtime behavior, update in lockstep:
 1. Implementation script(s) in `VideoDiffusion/`, `ImageDiffusion/`, or `scripts/`.
 2. Relevant source-of-truth docs under `docs/`.
 3. `docs/video-magi1-observations.md` for empirical outcomes, failures, fixes, and tuning decisions.
-4. `docs/vastai.md` if provider behavior or lifecycle changes.
-5. `docs/cloudflare-r2.md` if cache/artifact layout changes.
-6. `docs/accelerate.md` if startup/build/caching strategy changes.
-7. `docs/budget-analysis.md` if pricing assumptions, rates, or budget formulas change.
+4. `docs/video-scope-longlive-observations.md` for empirical Scope/LongLive outcomes, failures, fixes, and tuning decisions.
+5. `docs/vastai.md` if provider behavior or lifecycle changes.
+6. `docs/cloudflare-r2.md` if cache/artifact layout changes.
+7. `docs/accelerate.md` if startup/build/caching strategy changes.
+8. `docs/budget-analysis.md` if pricing assumptions, rates, or budget formulas change.
 
 New provider instructions go under `docs/`, not `docs/legacy/`.
 

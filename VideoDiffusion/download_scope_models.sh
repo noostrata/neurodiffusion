@@ -13,6 +13,7 @@ fi
 
 SCOPE_SRC_DIR="${SCOPE_SRC_DIR:-${SCRIPT_DIR}/.vendors/daydream-scope}"
 SCOPE_PIPELINE="${SCOPE_PIPELINE:-longlive}"
+SCOPE_INCLUDE_VACE="${SCOPE_INCLUDE_VACE:-0}"
 DAYDREAM_SCOPE_MODELS_DIR="${DAYDREAM_SCOPE_MODELS_DIR:-${SCRIPT_DIR}/.cache/daydream-scope/models}"
 DAYDREAM_SCOPE_LOGS_DIR="${DAYDREAM_SCOPE_LOGS_DIR:-${SCRIPT_DIR}/.cache/daydream-scope/logs}"
 DAYDREAM_SCOPE_PLUGINS_DIR="${DAYDREAM_SCOPE_PLUGINS_DIR:-${SCRIPT_DIR}/.cache/daydream-scope/plugins}"
@@ -33,4 +34,12 @@ mkdir -p "${DAYDREAM_SCOPE_MODELS_DIR}" "${DAYDREAM_SCOPE_LOGS_DIR}" "${DAYDREAM
 
 video_log "Downloading Scope models for pipeline '${SCOPE_PIPELINE}'."
 cd "${SCOPE_SRC_DIR}"
+if [[ "${SCOPE_PIPELINE}" == "longlive" ]]; then
+  args=(--models-dir "${DAYDREAM_SCOPE_MODELS_DIR}")
+  if [[ "${SCOPE_INCLUDE_VACE}" == "1" ]]; then
+    args+=(--include-vace)
+  fi
+  exec uv run python "${SCRIPT_DIR}/download_scope_longlive_models.py" "${args[@]}"
+fi
+
 exec uv run download_models --pipeline "${SCOPE_PIPELINE}"

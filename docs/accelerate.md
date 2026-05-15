@@ -11,25 +11,57 @@ Policy decision for this repo:
    - `B200 -> flash-attn`
    - `H100/H200/GH200/L40S/RTX-Ada/RTX5xxx -> SageAttention`
    - fallback: `sdpa`
-3. Scope/LongLive is the first realtime EEG validation path and should start on cheap 24GB-class GPUs before expensive Hopper/B200 tiers.
+3. Scope/LongLive is the first realtime EEG validation path. B200 has validated the control path; the next optimization is finding the cheapest GPU class that still holds realtime.
 4. Vast + Cloudflare R2 is the current provider/storage architecture; Prime references below are legacy context unless explicitly revived.
 
 ## Scope / LongLive acceleration policy
 
-Scope is upstream-owned; do not fork or vendor-patch it locally for first validation.
+Scope is upstream-owned, but this repo may apply small operator patches at checkout time when they are required for headless validation.
 The repo accelerates Scope runs by making startup deterministic:
 
 1. clone/build with `VideoDiffusion/setup_scope.sh`;
-2. place Scope models/logs/plugins under ignored `VideoDiffusion/.cache/daydream-scope/` paths unless overridden;
-3. download the `longlive` model once on the GPU host with `VideoDiffusion/download_scope_models.sh`;
-4. use `VideoDiffusion/load_scope_longlive.sh` for deterministic pipeline load parameters;
-5. use OSC from the EEG loop for prompt/runtime updates instead of adding a Python WebRTC dependency.
+2. apply repo patches from `VideoDiffusion/patches/daydream-scope/` unless `SCOPE_APPLY_PATCHES=0`;
+3. place Scope models/logs/plugins under ignored `VideoDiffusion/.cache/daydream-scope/` paths unless overridden;
+4. download LongLive with `VideoDiffusion/download_scope_models.sh`, which now uses the repo deterministic downloader for LongLive;
+5. start Scope with `SCOPE_AUTO_LOAD=0` to avoid accidental VACE auto-load;
+6. use `VideoDiffusion/load_scope_longlive.sh` for deterministic no-VACE pipeline load parameters;
+7. use OSC from the EEG loop for prompt/runtime updates instead of embedding WebRTC in the EEG process.
 
-First paid validation should optimize for low hourly burn, not maximum FPS:
+Validated B200 tuple:
+
+| Field | Value |
+| --- | --- |
+| Runtime tag | `scope_auto_py312_torch2.9.1_cu128_sm100` |
+| GPU | B200 / SM100 |
+| Env archive | `4484945914 bytes` |
+| Weights archive | `13718035301 bytes` |
+| Validation | `24.868 fps` over 90s WebRTC receive with synthetic EEG |
+
+Restore order for a fast next boot:
+
+1. clone repo on the Vast host;
+2. run `SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh` to clone Scope and apply patches;
+3. restore `scope_auto_py312_torch2.9.1_cu128_sm100` with `VideoDiffusion/restore_r2_prebuild_model.sh --model scope`;
+4. start with `SCOPE_AUTO_LOAD=0`;
+5. load LongLive explicitly with `SCOPE_VACE_ENABLED=false`.
+
+Prebuild boundary:
+
+1. R2 can persist the Scope uv env, dependency metadata, and LongLive/Wan model cache.
+2. R2 cannot persist a live GPU-resident loaded model; every fresh instance still needs a server start and explicit pipeline load.
+3. The validated B200 path reduced next boot work to source checkout/patch, tuple restore, server start, and load.
+
+Current publish controls:
+
+1. The Scope venv is uv-managed and may not have `pip`; publish falls back to `uv pip freeze`.
+2. `VideoDiffusion/publish_r2_prebuild_model.sh` supports `--env-compression gzip|zstd|none` and `--weights-compression gzip|zstd|none`.
+3. For Scope/LongLive, use gzip or zstd for the env archive and `--weights-compression none` for fastest large model-cache publish when R2 storage cost is less important than startup iteration time.
+
+Next paid validation should optimize for low hourly burn:
 
 1. `RTX 4090 24GB` or `RTX 5090 32GB` if available and reliable;
 2. `L40S` / `RTX 6000 Ada` for more memory headroom;
-3. H100/H200 only after the cheap tier proves the control path.
+3. H100/H200/B200 only when cheaper cards fail the realtime acceptance gate.
 
 ## 1) Why this policy
 

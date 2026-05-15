@@ -15,7 +15,7 @@ R2_BOOTSTRAP_VENV="${R2_BOOTSTRAP_VENV:-${REPO_ROOT}/.venv/r2-bootstrap}"
 
 BUNDLE_TAG="${BUNDLE_TAG:-}"
 RUNTIME_TAG="${RUNTIME_TAG:-}"
-VIDEO_MODEL="${VIDEO_MODEL:-magi}"     # magi|krea
+VIDEO_MODEL="${VIDEO_MODEL:-magi}"     # magi|krea|scope
 ATTN_BACKEND="${ATTN_BACKEND:-auto}"   # auto|sage|flash|sdpa
 TIERS="${TIERS:-}"
 PUBLISH_PREBUILD="${PUBLISH_PREBUILD:-always}"  # always|auto|never
@@ -26,6 +26,8 @@ PURGE_LOCAL_AFTER_UPLOAD="${PURGE_LOCAL_AFTER_UPLOAD:-0}"
 ALLOW_MISSING_ENV="${ALLOW_MISSING_ENV:-1}"
 ALLOW_MISSING_WEIGHTS="${ALLOW_MISSING_WEIGHTS:-1}"
 ALLOW_MISSING_IMAGE="${ALLOW_MISSING_IMAGE:-1}"
+R2_ENV_ARCHIVE_COMPRESSION="${R2_ENV_ARCHIVE_COMPRESSION:-gzip}"
+R2_WEIGHTS_ARCHIVE_COMPRESSION="${R2_WEIGHTS_ARCHIVE_COMPRESSION:-gzip}"
 
 usage() {
   cat <<'EOF'
@@ -35,7 +37,8 @@ Usage:
 Options:
   --bundle-tag <tag>             Override code bundle tag
   --runtime-tag <tag>            Runtime tuple tag override
-  --video-model <magi|krea>      Runtime model selector (default: magi)
+  --video-model <magi|krea|scope|longlive>
+                                  Runtime model selector (default: magi)
   --attn-backend <mode>          Attention backend hint for krea (auto|sage|flash|sdpa)
   --prefix <prefix>              R2 root prefix (default: neurodiffusion)
   --tiers <csv>                  Supported tiers metadata (model-default when omitted)
@@ -47,6 +50,8 @@ Options:
   --allow-missing-env            Allow missing VideoDiffusion/.venv
   --allow-missing-weights        Allow missing weights directory
   --allow-missing-image          Allow missing image archive
+  --env-compression <mode>       gzip|zstd|none for non-MAGI env archives
+  --weights-compression <mode>   gzip|zstd|none for non-MAGI weights/cache archives
 EOF
 }
 
@@ -108,6 +113,14 @@ while [[ $# -gt 0 ]]; do
       ALLOW_MISSING_IMAGE="1"
       shift
       ;;
+    --env-compression)
+      R2_ENV_ARCHIVE_COMPRESSION="$2"
+      shift 2
+      ;;
+    --weights-compression)
+      R2_WEIGHTS_ARCHIVE_COMPRESSION="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -121,9 +134,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${VIDEO_MODEL}" in
-  magi|krea) ;;
+  longlive)
+    VIDEO_MODEL="scope"
+    ;;
+  magi|krea|scope) ;;
   *)
-    echo "[error] --video-model must be magi or krea (got ${VIDEO_MODEL})." >&2
+    echo "[error] --video-model must be magi, krea, scope, or longlive (got ${VIDEO_MODEL})." >&2
     exit 1
     ;;
 esac
@@ -139,6 +155,8 @@ esac
 if [[ -z "${TIERS}" ]]; then
   if [[ "${VIDEO_MODEL}" == "krea" ]]; then
     TIERS="krea-b200-flashattn,krea-hopper-sage,krea-ampere-sage-or-sdpa"
+  elif [[ "${VIDEO_MODEL}" == "scope" ]]; then
+    TIERS="scope-longlive-24gb,scope-longlive-hopper"
   else
     TIERS="4.5b,24b"
   fi
@@ -170,13 +188,20 @@ if [[ -n "${BUNDLE_TAG}" ]]; then
 fi
 "${PYTHON_BIN}" "${PUBLISH_CODE_ARGS[@]}"
 
-if [[ "${VIDEO_MODEL}" == "krea" ]]; then
-  VD_VENV="${REPO_ROOT}/VideoDiffusion/.venv-krea"
-  VD_WEIGHTS="${REPO_ROOT}/VideoDiffusion/.cache/krea"
-else
-  VD_VENV="${REPO_ROOT}/VideoDiffusion/.venv"
-  VD_WEIGHTS="${REPO_ROOT}/VideoDiffusion/MAGI-1/downloads"
-fi
+case "${VIDEO_MODEL}" in
+  krea)
+    VD_VENV="${REPO_ROOT}/VideoDiffusion/.venv-krea"
+    VD_WEIGHTS="${REPO_ROOT}/VideoDiffusion/.cache/krea"
+    ;;
+  scope)
+    VD_VENV="${REPO_ROOT}/VideoDiffusion/.vendors/daydream-scope/.venv"
+    VD_WEIGHTS="${REPO_ROOT}/VideoDiffusion/.cache/daydream-scope"
+    ;;
+  *)
+    VD_VENV="${REPO_ROOT}/VideoDiffusion/.venv"
+    VD_WEIGHTS="${REPO_ROOT}/VideoDiffusion/MAGI-1/downloads"
+    ;;
+esac
 
 RUN_PREBUILD="1"
 if [[ "${PUBLISH_PREBUILD}" == "never" ]]; then
@@ -218,6 +243,8 @@ if [[ "${RUN_PREBUILD}" == "1" ]]; then
     bash "${REPO_ROOT}/VideoDiffusion/publish_r2_prebuild_model.sh" \
       --model "${VIDEO_MODEL}" \
       --attn-backend "${ATTN_BACKEND}" \
+      --env-compression "${R2_ENV_ARCHIVE_COMPRESSION}" \
+      --weights-compression "${R2_WEIGHTS_ARCHIVE_COMPRESSION}" \
       "${PREBUILD_ARGS[@]}"
 else
   echo "[r2] skip runtime tuple publish."
@@ -229,7 +256,9 @@ if [[ "${PURGE_LOCAL_AFTER_UPLOAD}" == "1" ]]; then
   rm -rf "${REPO_ROOT}/VideoDiffusion/.venv-krea"
   rm -rf "${REPO_ROOT}/VideoDiffusion/.tmp"
   rm -rf "${REPO_ROOT}/VideoDiffusion/.cache/krea"
+  rm -rf "${REPO_ROOT}/VideoDiffusion/.cache/daydream-scope"
   rm -rf "${REPO_ROOT}/VideoDiffusion/.vendors/krea-realtime-video"
+  rm -rf "${REPO_ROOT}/VideoDiffusion/.vendors/daydream-scope"
   rm -rf "${REPO_ROOT}/VideoDiffusion/MAGI-1/downloads"
   rm -rf "${REPO_ROOT}/VideoDiffusion/MAGI-1/ckpt"
   rm -rf "${REPO_ROOT}/VideoDiffusion/MAGI-1/t5"

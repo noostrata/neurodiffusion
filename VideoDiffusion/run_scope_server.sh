@@ -14,6 +14,7 @@ fi
 SCOPE_SRC_DIR="${SCOPE_SRC_DIR:-${SCRIPT_DIR}/.vendors/daydream-scope}"
 SCOPE_PIPELINE="${SCOPE_PIPELINE:-longlive}"
 SCOPE_PORT="${SCOPE_PORT:-8000}"
+SCOPE_AUTO_LOAD="${SCOPE_AUTO_LOAD:-1}"
 DAYDREAM_SCOPE_MODELS_DIR="${DAYDREAM_SCOPE_MODELS_DIR:-${SCRIPT_DIR}/.cache/daydream-scope/models}"
 DAYDREAM_SCOPE_LOGS_DIR="${DAYDREAM_SCOPE_LOGS_DIR:-${SCRIPT_DIR}/.cache/daydream-scope/logs}"
 DAYDREAM_SCOPE_PLUGINS_DIR="${DAYDREAM_SCOPE_PLUGINS_DIR:-${SCRIPT_DIR}/.cache/daydream-scope/plugins}"
@@ -24,6 +25,9 @@ Usage:
   VIDEO_MODEL=scope bash VideoDiffusion/run_scope_server.sh [daydream-scope args...]
 
 This launches Daydream Scope. It does not create cloud instances.
+
+Environment:
+  SCOPE_AUTO_LOAD=0  Do not export PIPELINE; load the pipeline explicitly through REST.
 EOF
 }
 
@@ -54,11 +58,16 @@ if ! command_exists uv; then
   exit 1
 fi
 
-export SCOPE_PORT PIPELINE="${SCOPE_PIPELINE}"
+export SCOPE_PORT
+if [[ "${SCOPE_AUTO_LOAD}" == "1" ]]; then
+  export PIPELINE="${SCOPE_PIPELINE}"
+else
+  unset PIPELINE
+fi
 export DAYDREAM_SCOPE_MODELS_DIR DAYDREAM_SCOPE_LOGS_DIR DAYDREAM_SCOPE_PLUGINS_DIR
 mkdir -p "${DAYDREAM_SCOPE_MODELS_DIR}" "${DAYDREAM_SCOPE_LOGS_DIR}" "${DAYDREAM_SCOPE_PLUGINS_DIR}"
 
 video_log "Starting Daydream Scope from ${SCOPE_SRC_DIR}."
-video_log "Pipeline hint: ${SCOPE_PIPELINE}; HTTP/OSC port: ${SCOPE_PORT}."
+video_log "Pipeline hint: ${SCOPE_PIPELINE}; auto_load=${SCOPE_AUTO_LOAD}; HTTP/OSC port: ${SCOPE_PORT}."
 cd "${SCOPE_SRC_DIR}"
 exec uv run daydream-scope "$@"

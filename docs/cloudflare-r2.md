@@ -1,14 +1,14 @@
 # Cloudflare R2 Storage (Canonical)
 
-_Last validated: 2026-02-18_
+_Last validated: 2026-05-15_
 
 This is the canonical storage runbook for this repository.
 Use Cloudflare R2 for artifact persistence, cache handoff, and cross-pod reuse.
 
 ## Why R2 is part of the fast path
 
-1. Prime pods are often short-lived; local pod disk is not durable.
-2. MAGI setup has heavy cold-start cost (`pip`, `flash-attn`, weights, first-run caches).
+1. Vast GPU instances are often short-lived; local instance disk is not durable.
+2. MAGI and Scope/LongLive setup have heavy cold-start cost (`pip`/`uv`, attention builds, weights, first-run caches).
 3. R2 gives a stable object store to move artifacts and reusable bundles between runs.
 
 ## Secret source and local bootstrap
@@ -96,6 +96,8 @@ Default script locations:
 - `scripts/cloudflare/prebuild_bundle.py`
 - `VideoDiffusion/publish_r2_prebuild.sh`
 - `VideoDiffusion/restore_r2_prebuild.sh`
+- `VideoDiffusion/publish_r2_prebuild_model.sh`
+- `VideoDiffusion/restore_r2_prebuild_model.sh`
 
 Bootstrap script behavior note:
 
@@ -333,9 +335,9 @@ bash VideoDiffusion/restore_r2_prebuild.sh \
 `restore_r2_prebuild.sh` repairs restored venv console-script shebangs after extraction, because archived venvs can contain absolute paths from the publishing host.
 Then run only incremental setup steps.
 
-## Model-aware runtime tuples (MAGI + Krea)
+## Model-aware runtime tuples (MAGI + Krea + Scope)
 
-Use the model-aware wrappers when you need both runtimes in one repo:
+Use the model-aware wrappers when you need multiple video runtimes in one repo:
 
 Publish:
 
@@ -351,8 +353,8 @@ bash scripts/cloudflare/publish_everything_r2.sh \
 
 Direct runtime publish/restore dispatchers:
 
-- `bash VideoDiffusion/publish_r2_prebuild_model.sh --model <magi|krea> --attn-backend <auto|sage|flash|sdpa> ...`
-- `bash VideoDiffusion/restore_r2_prebuild_model.sh --model <magi|krea> --mode auto --runtime-tag <runtime_tag> ...`
+- `bash VideoDiffusion/publish_r2_prebuild_model.sh --model <magi|krea|scope> --attn-backend <auto|sage|flash|sdpa> ...`
+- `bash VideoDiffusion/restore_r2_prebuild_model.sh --model <magi|krea|scope> --mode auto --runtime-tag <runtime_tag> ...`
 
 Suggested Krea runtime tuple tags:
 
@@ -361,6 +363,35 @@ Suggested Krea runtime tuple tags:
 - `krea-ampere-sage-or-sdpa`
 
 MAGI tuple naming remains unchanged (`4.5b`, `24b` tier metadata).
+
+Latest validated Scope/LongLive tuple snapshot:
+
+- `runtime_tag`: `scope_auto_py312_torch2.9.1_cu128_sm100`
+- `env_archive`: `neurodiffusion/env-cache/scope_auto_py312_torch2.9.1_cu128_sm100/venv_scope_auto_py312_torch2.9.1_cu128_sm100.tar.gz` (`4,484,945,914` bytes)
+- `weights_archive`: `neurodiffusion/weights/scope_auto_py312_torch2.9.1_cu128_sm100/weights_scope_auto_py312_torch2.9.1_cu128_sm100.tar.gz` (`13,718,035,301` bytes)
+- `latest manifest`: `neurodiffusion/manifests/runtime-tuples/scope_auto_py312_torch2.9.1_cu128_sm100/latest.json`
+- validated profile: `scope_longlive_b200_webrtc_synthetic_eeg`
+
+Scope/LongLive fast restore pattern:
+
+```bash
+cd /workspace/neurodiffusion
+SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh
+bash VideoDiffusion/restore_r2_prebuild_model.sh \
+  --model scope \
+  --mode tuple \
+  --runtime-tag scope_auto_py312_torch2.9.1_cu128_sm100 \
+  --extract-weights
+SCOPE_AUTO_LOAD=0 bash VideoDiffusion/run_scope_server.sh --host 0.0.0.0 --port 8000 -N
+SCOPE_VACE_ENABLED=false bash VideoDiffusion/load_scope_longlive.sh
+```
+
+Scope prebuild boundary:
+
+1. R2 can store the uv env archive and the model/cache archive.
+2. R2 cannot store a warm GPU process or already-loaded model state; each fresh instance still needs server start plus explicit LongLive load.
+3. The model-aware publish/restore scripts now accept `.tar.gz`, `.tar.zst`, and plain `.tar` tuple archives.
+4. For future Scope publishes, prefer `--weights-compression none` or `--weights-compression zstd` to avoid wasting time gzipping already-compressed model weights.
 
 ## Security rules
 
@@ -376,3 +407,5 @@ MAGI tuple naming remains unchanged (`4.5b`, `24b` tier metadata).
 - `docs/budget-analysis.md` (Prime vs R2 recurring cost math)
 - `docs/video-magi1-streaming.md` (MAGI runbook)
 - `docs/video-magi1-observations.md` (empirical outcomes)
+- `docs/video-scope-longlive-streaming.md` (Scope/LongLive runbook)
+- `docs/video-scope-longlive-observations.md` (Scope/LongLive empirical outcomes)

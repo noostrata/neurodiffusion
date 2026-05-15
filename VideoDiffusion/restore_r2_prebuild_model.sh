@@ -30,7 +30,7 @@ TIER="${TIER:-}"
 usage() {
   cat <<'EOF'
 Usage:
-  bash VideoDiffusion/restore_r2_prebuild_model.sh --model <magi|krea> --runtime-tag <tag> [options]
+  bash VideoDiffusion/restore_r2_prebuild_model.sh --model <magi|krea|scope> --runtime-tag <tag> [options]
 
 Options:
   --mode <auto|tuple|image>     Restore strategy (default: auto)
@@ -130,7 +130,11 @@ case "${MODE}" in
 esac
 
 if [[ -z "${APPLY_VENV_TARGET}" ]]; then
-  APPLY_VENV_TARGET="${SCRIPT_DIR}/.venv-krea"
+  if [[ "${VIDEO_MODEL}" == "scope" ]]; then
+    APPLY_VENV_TARGET="${SCRIPT_DIR}/.vendors/daydream-scope/.venv"
+  else
+    APPLY_VENV_TARGET="${SCRIPT_DIR}/.venv-krea"
+  fi
 fi
 
 PYTHON_BIN="$(r2_ensure_python_with_boto3 1)"
@@ -173,12 +177,42 @@ image_load_with() {
   return "${rc}"
 }
 
+find_first_archive() {
+  local dir="$1"
+  find "${dir}" -type f \( -name '*.tar' -o -name '*.tar.gz' -o -name '*.tgz' -o -name '*.tar.zst' \) 2>/dev/null | head -n1 || true
+}
+
+extract_archive() {
+  local archive="$1"
+  local dest="$2"
+  shift 2
+  case "${archive}" in
+    *.tar.zst)
+      if ! command_exists zstd; then
+        echo "[error] zstd archive restore requested but zstd is not installed: ${archive}" >&2
+        return 1
+      fi
+      zstd -dc "${archive}" | tar -xf - -C "${dest}" "$@"
+      ;;
+    *.tar.gz|*.tgz)
+      tar -xzf "${archive}" -C "${dest}" "$@"
+      ;;
+    *.tar)
+      tar -xf "${archive}" -C "${dest}" "$@"
+      ;;
+    *)
+      echo "[error] unsupported archive format: ${archive}" >&2
+      return 1
+      ;;
+  esac
+}
+
 restore_tuple_from() {
   local out_dir="$1"
   local env_archive
   local weights_archive
-  env_archive="$(find "${out_dir}/env_archive" -type f -name '*.tar.gz' 2>/dev/null | head -n1 || true)"
-  weights_archive="$(find "${out_dir}/weights_archive" -type f -name '*.tar.gz' 2>/dev/null | head -n1 || true)"
+  env_archive="$(find_first_archive "${out_dir}/env_archive")"
+  weights_archive="$(find_first_archive "${out_dir}/weights_archive")"
 
   if [[ -n "${APPLY_VENV_TARGET}" ]]; then
     if [[ -z "${env_archive}" ]]; then
@@ -187,7 +221,7 @@ restore_tuple_from() {
     fi
     rm -rf "${APPLY_VENV_TARGET}"
     mkdir -p "${APPLY_VENV_TARGET}"
-    tar -xzf "${env_archive}" -C "${APPLY_VENV_TARGET}" --strip-components=1
+    extract_archive "${env_archive}" "${APPLY_VENV_TARGET}" --strip-components=1
     echo "[restore] venv restored to ${APPLY_VENV_TARGET}"
   fi
 
@@ -201,7 +235,7 @@ restore_tuple_from() {
         OUT_WEIGHTS="${out_dir}/weights_extracted"
       fi
       mkdir -p "${OUT_WEIGHTS}"
-      tar -xzf "${weights_archive}" -C "${OUT_WEIGHTS}" --strip-components=1
+      extract_archive "${weights_archive}" "${OUT_WEIGHTS}" --strip-components=1
       echo "[restore] weights extracted to ${OUT_WEIGHTS}"
     fi
   fi

@@ -1,0 +1,19 @@
+diff --git a/src/scope/server/webrtc.py b/src/scope/server/webrtc.py
+index 7b7f9c8..8d6df52 100644
+--- a/src/scope/server/webrtc.py
++++ b/src/scope/server/webrtc.py
+@@ -572,7 +572,13 @@ class WebRTCManager:
+                 # When graph sources are handled externally (SourceInputHandler
+                 # for WebRTC multi-source, or _setup_multi_input_sources for
+                 # Syphon/NDI/Spout), signal recv() to keep running.
+-                if webrtc_source_node_ids or has_non_webrtc_sources:
++                # Text-to-video has no incoming browser/video source, but the
++                # server-side video track still needs to poll the local
++                # FrameProcessor output queue so generated frames can be sent
++                # to WebRTC. Scope treats missing input_mode as text mode.
++                if (
++                    webrtc_source_node_ids or has_non_webrtc_sources or initial_parameters.get("input_mode") != "video"
++                ):
+                     video_track.has_external_input = True
+ 
+                 # Store relay for cleanup

@@ -138,6 +138,26 @@ Practical implication:
 2. Krea B200-class testing should wait until the Scope control path is proven.
 3. MAGI remains an async/high-quality background renderer, not the primary realtime EEG loop.
 
+### Vast Scope/LongLive B200 validation run (2026-05-15)
+
+Paid run; instance destroyed after local pullback.
+
+| Field | Value |
+| --- | ---: |
+| GPU | `B200 x1` |
+| Observed total rate | `$3.9947916666666656/h` |
+| Alive window | about `56.8 min` |
+| Approx compute spend | about `$3.78` |
+| Realtime result | `24.868 fps` over a 90s WebRTC receive run |
+| First frame latency | `1.507s` in 90s run, `0.579s` in recorded 30s run |
+| Local output | `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4` |
+
+Cost interpretation:
+
+1. B200 proved the Scope/LongLive realtime control path under synthetic EEG.
+2. The next cost optimization is to retest the same R2 tuple on `RTX 4090`, `RTX 5090`, or `L40S`.
+3. If those hold `>=24 fps` at `320x576`, they should replace B200 as the default art-loop GPU.
+
 ### Prime managed disk rates in `eu_north` (USD / GB-hour)
 
 | Provider sample | Rate |
@@ -179,6 +199,7 @@ Interpretation:
 | `8x H100 (united_states sample)` | `$3.987` | `$7.973` | `$11.960` |
 | `1x Vast H200 sampled 2026-05-14` | `$0.328` | `$0.657` | `$0.985` |
 | `Vast A100 x8 listing sampled 2026-05-14` | `$0.978` | `$1.956` | `$2.934` |
+| `1x Vast B200 Scope run sampled 2026-05-15` | `$0.666` | `$1.332` | `$1.997` |
 
 ## Recent empirical publish run (MAGI tuple)
 

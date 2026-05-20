@@ -63,6 +63,14 @@ LongLive2 changes the infrastructure target:
 5. Asynchronous/streaming VAE decode is part of end-to-end FPS. Model-only FPS is not sufficient for our acceptance gate.
 6. The upstream SP script disables `kv_quant` under Ulysses SP today. Therefore the first Hopper two-card smoke is BF16 SP, not NVFP4+KV quant.
 
+The paper's explicit limitation is operationally important:
+
+1. NVFP4 acceleration is hardware-dependent, not universal.
+2. The speed gain requires Blackwell Tensor Cores and optimized kernels, with GB200/B200-class hosts as the intended path.
+3. A100 and H100/H200 do not have native hardware support for those optimized NVFP4 kernels.
+4. On non-Blackwell platforms, the paper's compensation mechanism is SP inference, not trying to force the NVFP4 speed lane onto Hopper.
+5. Therefore this repo treats `bf16_sp` on `sm90` as the first Hopper path, and treats `nvfp4_s2` / `nvfp4_s4` as Blackwell paths unless explicitly debugging a mismatch.
+
 Implementation consequences in this repo:
 
 1. `VIDEO_MODEL=longlive2` is a direct backend, not a `longlive` Scope alias.
@@ -70,6 +78,7 @@ Implementation consequences in this repo:
 3. Prompt updates are block/chunk-level for the offline runner. Live EEG requires a future persistent runner that can recache/apply prompt changes at native boundaries.
 4. The first valid two-card test is `sp_size=2`, `dp_size=1`, `--nproc_per_node=2`; data parallelism is not a one-stream result.
 5. The default native latent shape remains `44x80` for `704x1280` output at `F=128` or `F=384`; arbitrary 1080p/4K should not be assumed.
+6. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` rejects NVFP4 tuple/profile combinations that target non-Blackwell GPUs unless the operator passes an explicit mismatch override.
 
 ## First-Principles Target
 
@@ -130,7 +139,7 @@ Required config edits:
 6. `output_folder: <run output dir>`
 7. conservative first run: low `num_output_frames`, low resolution, one prompt
 
-### Lane B: NVFP4 S2 Maximum-Performance Path
+### Lane B: NVFP4 Blackwell Maximum-Performance Path
 
 Purpose: chase maximum FPS and resolution after the distributed path works.
 
@@ -141,10 +150,13 @@ longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1
 longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1
 ```
 
-Use this lane on Blackwell-class hosts first:
+Use this lane on Blackwell-class hosts first because this is the hardware lane that the paper says can actually accelerate low-bit NVFP4 inference:
 
 1. B200 / GB200 / GB300: build with `CUDA_ARCHS=100`.
 2. RTX 50/60 class: build with `CUDA_ARCHS=120` only if Vast offers are reliable and CUDA `12.8` support is clean.
+
+Do not use this as the first H100/H200 path.
+For Hopper, Lane A is the paper-compatible compensation path: BF16 sequence-parallel inference.
 
 Upstream environment:
 

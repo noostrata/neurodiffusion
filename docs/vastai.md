@@ -305,6 +305,8 @@ LongLive2 sequence-parallel inference is the experimental path for one stream ac
 It is not the same as renting a two-GPU host for Scope.
 
 Local plumbing exists; no paid LongLive2 run has been launched yet.
+The LongLive2 paper explicitly says NVFP4 acceleration is Blackwell-only; on A100/H100/H200, the intended compensation path is SP inference.
+Therefore the first Hopper paid lane is `bf16_sp`, not `nvfp4_s2`.
 
 First paid target:
 
@@ -353,6 +355,17 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --max-gpu-count 2 \
   --profile bf16_sp \
   --frames 128
+```
+
+Blackwell NVFP4 shape, only after the BF16 SP path is proven or when explicitly targeting Blackwell:
+
+```bash
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
+  --create-instance \
+  --gpu-regex 'B200|GB200|RTX.?5090' \
+  --runtime-tag longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1 \
+  --profile nvfp4_s2 \
+  --frames 384
 ```
 
 ## Persistence

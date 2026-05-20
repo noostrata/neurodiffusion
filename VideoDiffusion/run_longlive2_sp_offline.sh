@@ -45,7 +45,8 @@ Usage:
   bash VideoDiffusion/run_longlive2_sp_offline.sh [options]
 
 Options:
-  --profile <bf16_sp|nvfp4_s2>  Runtime profile (default: ${LONGLIVE2_PROFILE})
+  --profile <bf16_sp|nvfp4_s4|nvfp4_s2>
+                                  Runtime profile (default: ${LONGLIVE2_PROFILE})
   --src-dir <path>              LongLive2 checkout (default: ${LONGLIVE2_SRC_DIR})
   --run-dir <path>              Run artifact dir (default: ${LONGLIVE2_RUN_DIR})
   --config <path>               Use or generate config path

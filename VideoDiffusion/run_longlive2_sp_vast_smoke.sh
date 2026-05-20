@@ -213,6 +213,49 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "${LONGLIVE2_PROFILE}" in
+  bf16|bf16_sp)
+    LONGLIVE2_PROFILE="bf16_sp"
+    ;;
+  nvfp4|nvfp4_s4|nvfp4_4step)
+    LONGLIVE2_PROFILE="nvfp4_s4"
+    ;;
+  nvfp4_s2|nvfp4_2step)
+    LONGLIVE2_PROFILE="nvfp4_s2"
+    ;;
+  *)
+    echo "[error] unsupported LongLive2 profile '${LONGLIVE2_PROFILE}'." >&2
+    exit 1
+    ;;
+esac
+
+runtime_arch_from_tag() {
+  local tag="$1"
+  if [[ "${tag}" =~ (^|[_-])(sm[0-9]+)([_-]|$) ]]; then
+    printf '%s\n' "${BASH_REMATCH[2]}"
+  fi
+}
+
+validate_profile_runtime_tuple() {
+  local arch
+  arch="$(runtime_arch_from_tag "${RUNTIME_TAG}")"
+  if [[ "${LONGLIVE2_PROFILE}" == nvfp4* ]]; then
+    if [[ "${RESTORE_TUPLE}" == "1" && "${arch}" != "sm100" && "${arch}" != "sm120" && "${ALLOW_RUNTIME_GPU_MISMATCH}" != "1" ]]; then
+      echo "[error] ${LONGLIVE2_PROFILE} is the LongLive2 NVFP4 path. The paper's limitation says NVFP4 acceleration is Blackwell-only, so use an sm100/sm120 runtime tag or pass --allow-runtime-gpu-mismatch only for intentional debugging." >&2
+      exit 1
+    fi
+    if [[ "${GPU_REGEX}" =~ A100|H100|H200|GH200 ]] && [[ ! "${GPU_REGEX}" =~ B200|GB200|5090|RTX.?50|RTX.?60 ]] && [[ "${ALLOW_RUNTIME_GPU_MISMATCH}" != "1" ]]; then
+      echo "[error] ${LONGLIVE2_PROFILE} with GPU regex '${GPU_REGEX}' targets non-Blackwell GPUs. Use bf16_sp for Hopper/Ampere SP, or choose B200/GB200/RTX50-class offers." >&2
+      exit 1
+    fi
+  fi
+  if [[ "${LONGLIVE2_PROFILE}" == "bf16_sp" && "${arch}" == "sm100" ]]; then
+    echo "[longlive2-vast] note: bf16_sp on Blackwell is valid for proof/debug, but it is not the paper's max-FPS NVFP4 lane." >&2
+  fi
+}
+
+validate_profile_runtime_tuple
+
 q() {
   printf "%q" "$1"
 }

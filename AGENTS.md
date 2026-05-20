@@ -136,7 +136,7 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - Use `VIDEO_MODEL=longlive2` for this path. `VIDEO_MODEL=longlive` remains the Daydream Scope alias.
 - LongLive2 EEG plumbing starts offline: compile stable EEG state changes into prompt blocks using `--schedule-csv` or repeated `--shot-prompt` inputs, then render a multi-shot video.
 - LongLive2 live EEG requires a future persistent runner with KV-recache/prompt-boundary handling; do not pretend the offline `torchrun` entry point is a live OSC target.
-- NVFP4 is Blackwell-oriented for max performance. On Hopper, start with `bf16_sp` unless intentionally debugging NVFP4/FourOverSix.
+- NVFP4 acceleration is Blackwell-only per the LongLive2 paper limitation. On A100/H100/H200, use `bf16_sp` sequence-parallel inference as the compensation path unless intentionally debugging NVFP4/FourOverSix.
 - The upstream SP script disables `kv_quant` under Ulysses SP today; do not claim SP+KV-quant speedups unless a real run proves them.
 - A valid LongLive2 two-card run must show one output stream plus per-GPU telemetry proving both cards were active.
 - R2 may cache the LongLive2 env, built extensions, checkpoints, and generated merged/materialized checkpoints; it cannot preserve a live NCCL process group or GPU-resident model.

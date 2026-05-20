@@ -119,6 +119,7 @@ Research snapshot:
 6. upstream reports `45.7 FPS` for LongLive2-5B in the 2-step NVFP4 setup, but this repo has not validated that result.
 7. upstream LongLive 1.0 establishes the interaction pattern: causal AR inference, KV-recache for prompt switches, short-window attention, and frame sink for long-range consistency.
 8. upstream LongLive2 SP currently disables `kv_quant` inside Ulysses SP, so Hopper two-card proof starts as BF16 SP before chasing NVFP4/KV-cache speedups.
+9. the LongLive2 paper explicitly limits NVFP4 acceleration to Blackwell-class hardware; on A100/H100/H200, use SP inference as the compensation strategy instead of expecting native NVFP4 speedups.
 
 Planned tuple families:
 

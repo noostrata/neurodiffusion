@@ -124,6 +124,33 @@ python3 VideoDiffusion/eeg_control/run_neurofeedback_session.py \
 
 The fake Scope server also accepts `--http-port` and `--osc-port` for split REST/OSC tests.
 
+### LongLive2 Offline Schedule
+
+LongLive2 does not currently have the Scope OSC control surface.
+For LongLive2, compile stable EEG state changes into prompt chunks first, then render an offline multi-shot video.
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+python3 VideoDiffusion/eeg_control/run_neurofeedback_session.py \
+  --board mock \
+  --mock-scenario alternating \
+  --policy balancer \
+  --sink stdout \
+  --sink schedule \
+  --duration-s 60 \
+  --schedule-csv VideoDiffusion/.tmp/longlive2_eeg_schedule.csv
+
+bash VideoDiffusion/run_longlive2_sp_offline.sh \
+  --dry-run \
+  --frames 128 \
+  --sp-size 2 \
+  --dp-size 1 \
+  --schedule-csv VideoDiffusion/.tmp/longlive2_eeg_schedule.csv
+```
+
+That dry run writes a generated LongLive2 config plus a prompt folder under `VideoDiffusion/.tmp/.../prompt_schedule/`.
+A real GPU run uses the same `--schedule-csv` path, but requires the LongLive2 repo, env, and checkpoints to be present on the remote instance.
+
 ## Install Optional EEG Dependencies
 
 The mock path needs only the repo's local Python plus `numpy`. OpenBCI hardware and LSL need optional packages:

@@ -123,8 +123,21 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - Use it only for the one-stream multi-GPU path where multiple GPUs cooperate on one video generation state.
 - Do not present a two-GPU Scope host as a LongLive2 or sequence-parallel result.
 - Source-of-truth plan: `docs/video-longlive2-sp-streaming.md`.
+- Entry points:
+  - `VideoDiffusion/setup_longlive2.sh`
+  - `VideoDiffusion/download_longlive2_models.sh`
+  - `VideoDiffusion/longlive2_config.py`
+  - `VideoDiffusion/run_longlive2_sp_offline.sh`
+  - `VideoDiffusion/run_longlive2_sp_vast_smoke.sh`
+  - `VideoDiffusion/longlive2_run_report.py`
 - First target is BF16 Ulysses sequence-parallel inference through upstream `inference_sp.py`, not live EEG.
 - First two-card target uses `sp_size=2`, `dp_size=1`, and `torchrun --nproc_per_node=2`.
+- The upstream valid SP-size rule is `sp_size` must divide `gcd(model_num_heads, num_frame_per_block)`; for the current `24` heads and `8` frames/block, valid sizes are `1`, `2`, `4`, and `8`.
+- Use `VIDEO_MODEL=longlive2` for this path. `VIDEO_MODEL=longlive` remains the Daydream Scope alias.
+- LongLive2 EEG plumbing starts offline: compile stable EEG state changes into prompt blocks using `--schedule-csv` or repeated `--shot-prompt` inputs, then render a multi-shot video.
+- LongLive2 live EEG requires a future persistent runner with KV-recache/prompt-boundary handling; do not pretend the offline `torchrun` entry point is a live OSC target.
+- NVFP4 is Blackwell-oriented for max performance. On Hopper, start with `bf16_sp` unless intentionally debugging NVFP4/FourOverSix.
+- The upstream SP script disables `kv_quant` under Ulysses SP today; do not claim SP+KV-quant speedups unless a real run proves them.
 - A valid LongLive2 two-card run must show one output stream plus per-GPU telemetry proving both cards were active.
 - R2 may cache the LongLive2 env, built extensions, checkpoints, and generated merged/materialized checkpoints; it cannot preserve a live NCCL process group or GPU-resident model.
 - EEG integration comes after distributed inference is proven: offline prompt schedule first, persistent runner second, live output third.

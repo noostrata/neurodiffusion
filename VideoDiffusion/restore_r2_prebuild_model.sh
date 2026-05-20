@@ -30,7 +30,7 @@ TIER="${TIER:-}"
 usage() {
   cat <<'EOF'
 Usage:
-  bash VideoDiffusion/restore_r2_prebuild_model.sh --model <magi|krea|scope> --runtime-tag <tag> [options]
+  bash VideoDiffusion/restore_r2_prebuild_model.sh --model <magi|krea|scope|longlive2> --runtime-tag <tag> [options]
 
 Options:
   --mode <auto|tuple|image>     Restore strategy (default: auto)
@@ -132,6 +132,8 @@ esac
 if [[ -z "${APPLY_VENV_TARGET}" ]]; then
   if [[ "${VIDEO_MODEL}" == "scope" ]]; then
     APPLY_VENV_TARGET="${SCRIPT_DIR}/.vendors/daydream-scope/.venv"
+  elif [[ "${VIDEO_MODEL}" == "longlive2" ]]; then
+    APPLY_VENV_TARGET="${SCRIPT_DIR}/.vendors/LongLive2/.venv"
   else
     APPLY_VENV_TARGET="${SCRIPT_DIR}/.venv-krea"
   fi

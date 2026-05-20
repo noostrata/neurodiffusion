@@ -14,7 +14,7 @@ Usage:
   bash VideoDiffusion/setup_video_runtime.sh [options]
 
 Options:
-  --model <magi|krea|scope|longlive>
+  --model <magi|krea|scope|longlive|longlive2>
                                    Video model runtime to setup (default: $VIDEO_MODEL)
   --attn-backend <auto|sage|flash|sdpa>
                                    Attention backend policy (default: $ATTN_BACKEND)
@@ -55,6 +55,12 @@ fi
 if [[ "${VIDEO_MODEL}" == "scope" ]]; then
   video_log "Dispatching Daydream Scope + LongLive setup."
   bash "${SCRIPT_DIR}/setup_scope.sh"
+  exit 0
+fi
+
+if [[ "${VIDEO_MODEL}" == "longlive2" ]]; then
+  video_log "Dispatching LongLive2 setup."
+  bash "${SCRIPT_DIR}/setup_longlive2.sh"
   exit 0
 fi
 

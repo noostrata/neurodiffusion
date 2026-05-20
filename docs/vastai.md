@@ -64,6 +64,15 @@ python3 scripts/vast/query_video_offers.py \
   --out-csv VideoDiffusion/.tmp/vast_video_offer_scan_scope.csv
 ```
 
+LongLive2 two-GPU SP scan:
+
+```bash
+python3 scripts/vast/query_video_offers.py \
+  --model longlive2 \
+  --out-json VideoDiffusion/.tmp/vast_video_offer_scan_longlive2.json \
+  --out-csv VideoDiffusion/.tmp/vast_video_offer_scan_longlive2.csv
+```
+
 Deterministic selection:
 
 ```bash
@@ -134,8 +143,8 @@ On the instance, keep runtime behavior model-selectable:
 
 ```bash
 cd /workspace/neurodiffusion/VideoDiffusion
-VIDEO_MODEL=<magi|krea|scope|longlive> ATTN_BACKEND=<auto|sage|flash|sdpa> bash setup_video_runtime.sh
-VIDEO_MODEL=<magi|krea|scope|longlive> ATTN_BACKEND=<auto|sage|flash|sdpa> bash run_video_stream.sh
+VIDEO_MODEL=<magi|krea|scope|longlive|longlive2> ATTN_BACKEND=<auto|sage|flash|sdpa> bash setup_video_runtime.sh
+VIDEO_MODEL=<magi|krea|scope|longlive|longlive2> ATTN_BACKEND=<auto|sage|flash|sdpa> bash run_video_stream.sh
 ```
 
 For Scope/LongLive, follow setup with:
@@ -290,12 +299,14 @@ Acceptance is encoded in `run_report.json`:
 Use `--keep-instance` only for intentional interactive debugging.
 If using the B200-published tuple on cheaper GPUs, the wrapper deliberately passes the runtime mismatch path because Scope tuple reuse is env/cache-oriented rather than MAGI custom-kernel-oriented.
 
-## Planned LongLive2 SP one-stream path
+## LongLive2 SP one-stream path
 
-LongLive2 sequence-parallel inference is the planned path for one stream across two GPUs.
+LongLive2 sequence-parallel inference is the experimental path for one stream across two GPUs.
 It is not the same as renting a two-GPU host for Scope.
 
-Planned first paid target:
+Local plumbing exists; no paid LongLive2 run has been launched yet.
+
+First paid target:
 
 1. two GPUs exactly: `--min-gpu-count 2 --max-gpu-count 2`;
 2. first lane: BF16 SP on `H100/H200 x2` or another reliable Hopper two-GPU host;
@@ -303,9 +314,9 @@ Planned first paid target:
 4. config shape: `sp_size=2`, `dp_size=1`;
 5. output: one MP4 written by rank 0, not two independent videos.
 
-Planned instance lifecycle:
+Instance lifecycle:
 
-1. query offers with a LongLive2-specific profile or explicit query override;
+1. query offers with `scripts/vast/query_video_offers.py --model longlive2`;
 2. prefer datacenter two-GPU listings with good disk/network and, when visible, better GPU topology;
 3. provision only with explicit `--create-instance`;
 4. restore the R2 LongLive2 tuple if available;
@@ -325,6 +336,24 @@ Acceptance:
 6. no paid instance remains running.
 
 See `docs/video-longlive2-sp-streaming.md` for the complete plan.
+
+Wrapper dry-run:
+
+```bash
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --dry-run
+```
+
+Paid wrapper shape, only after explicit approval:
+
+```bash
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
+  --create-instance \
+  --gpu-regex 'H100|H200|GH200' \
+  --min-gpu-count 2 \
+  --max-gpu-count 2 \
+  --profile bf16_sp \
+  --frames 128
+```
 
 ## Persistence
 

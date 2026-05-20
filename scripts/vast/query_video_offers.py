@@ -30,12 +30,18 @@ DEFAULT_QUERY_BY_MODEL = {
         "num_gpus>=1 gpu_ram>=24 disk_space>200 disk_bw>1000 "
         "inet_up>500 inet_down>500 direct_port_count>=2 cuda_max_good>=12.8"
     ),
+    "longlive2": (
+        "verified=True datacenter=True reliability>0.99 rentable=True "
+        "num_gpus>=2 gpu_ram>=40 disk_space>260 disk_bw>1000 "
+        "inet_up>500 inet_down>500 direct_port_count>=2 cuda_max_good>=12.8"
+    ),
 }
 
 MODEL_GPU_REGEX = {
     "magi": r"(B200|H200|H100|GH200|A100|A6000|RTX.?6000|RTX.?4090|L40S)",
     "krea": r"(B200|H200|H100|GH200|L40S|RTX.?6000|A6000|RTX.?5090)",
     "scope": r"(B200|H200|H100|GH200|L40S|RTX.?6000|A6000|RTX.?5090|RTX.?4090)",
+    "longlive2": r"(GB200|B200|H200|H100|GH200|RTX.?6000|RTX.?5090)",
 }
 
 CSV_FIELDS = [
@@ -161,7 +167,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", choices=["magi", "krea", "scope"], default="magi")
+    parser.add_argument("--model", choices=["magi", "krea", "scope", "longlive2"], default="magi")
     parser.add_argument("--query", default="", help="Vast search expression")
     parser.add_argument("--gpu-name-regex", default="", help="Optional local regex filter for gpu_name")
     parser.add_argument("--out-json", default="")

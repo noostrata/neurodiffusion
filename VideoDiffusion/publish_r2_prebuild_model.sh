@@ -42,7 +42,8 @@ Usage:
   bash VideoDiffusion/publish_r2_prebuild_model.sh [options]
 
 Options:
-  --model <magi|krea|scope>      Runtime model selector
+  --model <magi|krea|scope|longlive2>
+                                  Runtime model selector
   --attn-backend <mode>          auto|sage|flash|sdpa (krea metadata + dispatch)
   --runtime-tag <tag>            Runtime tuple tag override
   --tiers <csv>                  Tier support metadata
@@ -203,6 +204,8 @@ PYTHON_BIN="$(r2_ensure_python_with_boto3 1)"
 if [[ -z "${VENV_DIR}" ]]; then
   if [[ "${VIDEO_MODEL}" == "scope" ]]; then
     VENV_DIR="${SCRIPT_DIR}/.vendors/daydream-scope/.venv"
+  elif [[ "${VIDEO_MODEL}" == "longlive2" ]]; then
+    VENV_DIR="${SCRIPT_DIR}/.vendors/LongLive2/.venv"
   else
     VENV_DIR="${SCRIPT_DIR}/.venv-krea"
   fi
@@ -210,6 +213,8 @@ fi
 if [[ -z "${WEIGHTS_DIR}" ]]; then
   if [[ "${VIDEO_MODEL}" == "scope" ]]; then
     WEIGHTS_DIR="${SCRIPT_DIR}/.cache/daydream-scope"
+  elif [[ "${VIDEO_MODEL}" == "longlive2" ]]; then
+    WEIGHTS_DIR="${SCRIPT_DIR}/.cache/longlive2"
   else
     WEIGHTS_DIR="${SCRIPT_DIR}/.cache/krea"
   fi
@@ -217,6 +222,8 @@ fi
 if [[ -z "${VALIDATED_PROFILES}" ]]; then
   if [[ "${VIDEO_MODEL}" == "scope" ]]; then
     VALIDATED_PROFILES="scope_longlive_realtime_smoke"
+  elif [[ "${VIDEO_MODEL}" == "longlive2" ]]; then
+    VALIDATED_PROFILES="longlive2_sp_offline_smoke"
   else
     VALIDATED_PROFILES="krea_realtime_smoke"
   fi

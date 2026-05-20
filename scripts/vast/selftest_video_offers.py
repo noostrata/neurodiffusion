@@ -122,6 +122,45 @@ def test_scope_cost_accepts_4090_tier() -> None:
     assert selected["selected_offer"]["offer_id"] == "cheap4090"
 
 
+def test_longlive2_two_gpu_sm90_filter() -> None:
+    selected = _select(
+        {
+            "model": "longlive2",
+            "offers": [
+                {"offer_id": "h200x1", "gpu_name": "H200", "num_gpus": 1, "dph_total": 3.8},
+                {"offer_id": "h200x2", "gpu_name": "H200", "num_gpus": 2, "dph_total": 7.4},
+                {"offer_id": "b200x2", "gpu_name": "B200", "num_gpus": 2, "dph_total": 11.0},
+            ],
+        },
+        selection_goal="cost",
+        min_gpu_count=2,
+        max_gpu_count=2,
+        max_dph=8.0,
+        runtime_tag="longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1",
+        allow_runtime_gpu_mismatch=False,
+    )
+    assert selected["selected_offer"]["offer_id"] == "h200x2"
+
+
+def test_sm120_runtime_tag_filters_to_5090() -> None:
+    selected = _select(
+        {
+            "model": "longlive2",
+            "offers": [
+                {"offer_id": "h100", "gpu_name": "H100", "num_gpus": 1, "dph_total": 2.1},
+                {"offer_id": "rtx5090", "gpu_name": "RTX 5090", "num_gpus": 1, "dph_total": 1.7},
+            ],
+        },
+        selection_goal="cost",
+        min_gpu_count=1,
+        max_gpu_count=0,
+        max_dph=None,
+        runtime_tag="scope_auto_py312_torch2.9.1_cu128_sm120",
+        allow_runtime_gpu_mismatch=False,
+    )
+    assert selected["selected_offer"]["offer_id"] == "rtx5090"
+
+
 def main() -> int:
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

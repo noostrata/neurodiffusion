@@ -254,10 +254,11 @@ Cost interpretation:
 3. Future comparable one-GPU sweeps should be cheaper if a one-GPU H100/H200/GH200 listing is available.
 4. Vast credit after teardown was about `$9.63`.
 
-### Planned Vast LongLive2 SP cost controls (2026-05-20)
+### Vast LongLive2 SP cost controls (2026-05-21)
 
-LongLive2 SP is the planned one-stream two-GPU path.
+LongLive2 SP is the experimental one-stream two-GPU path.
 It should be costed differently from Scope because the first useful test may include source builds, extension builds, model downloads, and R2 tuple publish.
+Local plumbing is implemented, but no paid LongLive2 GPU run has been launched yet.
 
 Known anchor:
 

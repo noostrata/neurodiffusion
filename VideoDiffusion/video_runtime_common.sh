@@ -18,7 +18,7 @@ normalize_video_model() {
   local model
   model="$(to_lower "${raw}")"
   case "${model}" in
-    magi|krea|scope|longlive)
+    magi|krea|scope|longlive|longlive2)
       if [[ "${model}" == "longlive" ]]; then
         printf 'scope\n'
         return 0
@@ -26,7 +26,7 @@ normalize_video_model() {
       printf '%s\n' "${model}"
       ;;
     *)
-      echo "[error] Unsupported VIDEO_MODEL='${raw}'. Use magi, krea, scope, or longlive." >&2
+      echo "[error] Unsupported VIDEO_MODEL='${raw}'. Use magi, krea, scope, longlive, or longlive2." >&2
       return 1
       ;;
   esac
@@ -97,6 +97,8 @@ default_tiers_for_model() {
     printf 'krea-b200-flashattn,krea-hopper-sage,krea-ampere-sage-or-sdpa\n'
   elif [[ "${model}" == "scope" ]]; then
     printf 'scope-longlive-24gb,scope-longlive-hopper\n'
+  elif [[ "${model}" == "longlive2" ]]; then
+    printf 'longlive2-bf16-sp-hopper,longlive2-nvfp4-blackwell\n'
   else
     printf '4.5b,24b\n'
   fi

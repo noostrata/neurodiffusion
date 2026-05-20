@@ -1,30 +1,32 @@
-# LongLive2 Sequence-Parallel Streaming Plan
+# LongLive2 Sequence-Parallel Runbook
 
-_Last updated: 2026-05-20_
+_Last updated: 2026-05-21_
 
 This is the planning runbook for a one-stream, multi-GPU LongLive2 path.
 The objective is one live video stream whose generation state is split across two or more GPUs, not two independent Scope streams.
 
 ## Status
 
-Current status: researched and planned, not validated in this repo.
+Current status: local plumbing implemented and no-cost validated; no paid LongLive2 GPU run has been launched from this repo yet.
 
 LongLive2 is a separate experimental lane from Daydream Scope + LongLive:
 
 1. Scope + LongLive remains the validated one-GPU realtime baseline.
 2. LongLive2 is the candidate for one-stream multi-GPU inference because upstream exposes sequence-parallel inference through `inference_sp.py`.
 3. LongLive2 does not currently run through Scope REST/OSC.
-4. EEG integration must be added after distributed inference is proven, not before.
+4. EEG integration starts as an offline prompt-block schedule because upstream LongLive2 currently exposes an offline inference entry point, not a Scope-style live OSC/WebRTC server.
 
 ## Source Snapshot
 
-Primary upstream sources checked on 2026-05-20:
+Primary upstream sources checked on 2026-05-21:
 
 1. NVLabs LongLive repo: https://github.com/NVlabs/LongLive
 2. LongLive2 project page: https://nvlabs.github.io/LongLive/LongLive2/
 3. LongLive2 paper: https://arxiv.org/abs/2605.18739
 4. LongLive2 BF16 Hugging Face model card: https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B
-5. LongLive2 NVFP4 S2 Hugging Face model card: https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B-NVFP4-S2
+5. LongLive2 NVFP4 S4 Hugging Face model card: https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B-NVFP4-S4
+6. LongLive2 NVFP4 S2 Hugging Face model card: https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B-NVFP4-S2
+7. LongLive 1.0 paper: https://arxiv.org/abs/2509.22622
 
 Repository state observed:
 
@@ -40,6 +42,34 @@ Upstream capability claims:
 2. LongLive2 supports NVFP4 W4A4 inference, FP4 KV-cache quantization, multi-shot attention sinks, and asynchronous/streaming VAE decode.
 3. The paper reports up to `1.84x` inference speedup and `45.7 FPS` for LongLive2-5B in the reported 2-step setup.
 4. The project page reports `19.4GB` peak memory with NVFP4 KV cache and `45.7 FPS` on GB200 with 2-step generation.
+
+## Paper-Derived Constraints
+
+LongLive 1.0 is the interaction design reference:
+
+1. It uses a causal frame-level AR design so inference can reuse KV cache instead of recomputing full bidirectional context.
+2. Prompt switching is not just "send a new prompt"; the paper identifies two failure modes: dropping cache gives abrupt visual discontinuity, while retaining stale cache can ignore the new prompt.
+3. KV-recache is the proposed fix: rebuild cache at the prompt boundary from already generated visual context plus the new prompt.
+4. Streaming long tuning matters because train-short/test-long AR models accumulate error; the model must be exposed to its own generated history during training.
+5. Short-window attention plus frame sink is the speed/consistency tradeoff: keep a rolling local KV window and retain first-frame/chunk sink tokens as persistent global anchors.
+6. The reported LongLive 1.0 reference is `20.7 FPS` on one H100 and up to `240s` on one H100, but this repo's validated Scope/LongLive path is a separate implementation with lower resolution ceilings so far.
+
+LongLive2 changes the infrastructure target:
+
+1. Training uses Balanced SP: clean-history and noisy-target chunks are paired per rank so work is not clean-heavy/noisy-heavy on different GPUs.
+2. Inference supports sequence parallelism through Ulysses SP. This is the code path we use for one-stream multi-GPU testing.
+3. NVFP4 is not merely post-training compression in the paper; the best quality story is training/inference alignment. Direct PTQ is called out as lower quality, so repo docs should not imply that arbitrary BF16 checkpoints can be cheaply PTQ'd into the same quality tier.
+4. Blackwell is the native full NVFP4 performance target. On non-Blackwell GPUs, the paper points to SP inference as the practical way to recover speed.
+5. Asynchronous/streaming VAE decode is part of end-to-end FPS. Model-only FPS is not sufficient for our acceptance gate.
+6. The upstream SP script disables `kv_quant` under Ulysses SP today. Therefore the first Hopper two-card smoke is BF16 SP, not NVFP4+KV quant.
+
+Implementation consequences in this repo:
+
+1. `VIDEO_MODEL=longlive2` is a direct backend, not a `longlive` Scope alias.
+2. EEG schedules are compiled to LongLive2 prompt chunks through the upstream `MultiTextConcatDataset` directory format.
+3. Prompt updates are block/chunk-level for the offline runner. Live EEG requires a future persistent runner that can recache/apply prompt changes at native boundaries.
+4. The first valid two-card test is `sp_size=2`, `dp_size=1`, `--nproc_per_node=2`; data parallelism is not a one-stream result.
+5. The default native latent shape remains `44x80` for `704x1280` output at `F=128` or `F=384`; arbitrary 1080p/4K should not be assumed.
 
 ## First-Principles Target
 
@@ -134,52 +164,64 @@ Efficient-Large-Model/LongLive-2.0-5B-NVFP4-S2
 
 Use `inference.sampling_steps: 2` for the S2 checkpoint unless the model card changes.
 
-## Required Repo Plumbing
+## Implemented Repo Plumbing
 
-Add this as a new `VIDEO_MODEL=longlive2` family, not as a Scope alias.
+This repo now has a separate `VIDEO_MODEL=longlive2` family, not a Scope alias.
 
-Implementation files to add:
+Implemented files:
 
 1. `VideoDiffusion/setup_longlive2.sh`
-   - clone `https://github.com/NVlabs/LongLive` into `VideoDiffusion/.vendors/LongLive2`;
+   - clones `https://github.com/NVlabs/LongLive` into `VideoDiffusion/.vendors/LongLive2`;
    - pin `LONGLIVE2_REPO_REF` by commit, defaulting to the researched commit until deliberately refreshed;
-   - create an ignored runtime env file under `VideoDiffusion/.longlive2_runtime.env`;
-   - support `LONGLIVE2_SKIP_BUILD=1` for cheap clone/config steps.
+   - creates an ignored runtime env file under `VideoDiffusion/.longlive2_runtime.env`;
+   - supports `--skip-build` for cheap clone/config steps;
+   - supports BF16 and NVFP4 profile setup, including FourOverSix and pinned flash-attention source build for NVFP4.
 2. `VideoDiffusion/download_longlive2_models.sh`
-   - download BF16 or NVFP4 checkpoints into ignored cache paths;
-   - verify expected files exist;
-   - write a sanitized model manifest without tokens, hostnames, or full secret-bearing env.
+   - downloads BF16, NVFP4 S4, or NVFP4 S2 checkpoints into ignored cache paths;
+   - optionally downloads Wan2.2-TI2V-5B base assets;
+   - writes a sanitized model manifest without tokens, hostnames, or secret env.
 3. `VideoDiffusion/longlive2_config.py`
-   - generate patched inference configs from templates;
-   - set `sp_size`, `dp_size`, prompt path, checkpoint paths, output folder, frame count, sampling steps, and resolution shape;
-   - reject impossible SP settings before paid launch.
+   - generates patched inference configs;
+   - sets `sp_size`, `dp_size`, prompt path, checkpoint paths, output folder, frame count, sampling steps, and resolution shape;
+   - rejects impossible SP settings before paid launch;
+   - converts EEG schedule CSV or repeated `--shot-prompt` inputs into the upstream prompt-folder layout.
 4. `VideoDiffusion/run_longlive2_sp_offline.sh`
-   - run a local/remote offline render through `torchrun`;
-   - support `LONGLIVE2_NPROC=2`;
-   - collect logs, `ffprobe`, frame samples, and per-rank stderr/stdout.
+   - runs an offline render through `torchrun`;
+   - supports `sp_size * dp_size` process count;
+   - writes config, launch plan, torchrun log, GPU telemetry, report JSON, artifact QA, and contact sheet.
 5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh`
-   - provision a two-GPU Vast host only when `--create-instance` is passed;
-   - select offers with `--min-gpu-count 2 --max-gpu-count 2`;
-   - restore R2 tuple when available;
+   - provisions a two-GPU Vast host only when `--create-instance` is passed;
+   - selects offers with `--min-gpu-count 2 --max-gpu-count 2`;
+   - restores R2 tuple when available;
    - build/download fallback only when explicitly allowed;
-   - run one short SP inference;
-   - pull local MP4, logs, config, phase telemetry, and GPU telemetry;
-   - tear down by default.
+   - runs one short SP inference;
+   - pulls local MP4, logs, config, phase telemetry, and GPU telemetry;
+   - tears down by default.
 6. `VideoDiffusion/longlive2_run_report.py`
-   - parse torchrun logs for SP group layout;
-   - parse per-GPU utilization;
-   - compute frames/sec from output metadata;
-   - compute first-output time when available;
-   - generate contact sheet and nonblank artifact QA.
+   - parses torchrun logs for SP group layout;
+   - parses per-GPU utilization;
+   - reads `ffprobe` metadata when output exists;
+   - generates contact sheet and nonblank artifact QA when possible.
 7. R2 dispatch updates:
-   - allow `--model longlive2` in `VideoDiffusion/publish_r2_prebuild_model.sh`;
-   - allow `--model longlive2` in `VideoDiffusion/restore_r2_prebuild_model.sh`;
-   - add tuple metadata for `bf16_sp`, `nvfp4_s2_sm100`, and optional `nvfp4_s2_sm120`.
+   - `--model longlive2` is supported in `VideoDiffusion/publish_r2_prebuild_model.sh`;
+   - `--model longlive2` is supported in `VideoDiffusion/restore_r2_prebuild_model.sh`;
+   - default tuple tiers are `longlive2-bf16-sp-hopper,longlive2-nvfp4-blackwell`.
 8. Vast selector updates:
-   - add a `longlive2` model profile or a documented query override;
-   - require two GPUs for SP smoke;
-   - prefer NVLink/SXM/datacenter listings when available;
-   - log topology through `nvidia-smi topo -m`.
+   - `scripts/vast/query_video_offers.py --model longlive2` targets two-GPU datacenter CUDA 12.8 hosts;
+   - `scripts/vast/select_video_offer.py` handles `sm90`, `sm100`, and `sm120` runtime tags;
+   - SP smoke defaults to two GPUs and logs GPU names plus telemetry.
+
+No-cost validation commands:
+
+```bash
+python3 VideoDiffusion/longlive2_config.py selftest
+python3 VideoDiffusion/longlive2_run_report.py selftest
+bash VideoDiffusion/run_longlive2_sp_offline.sh --dry-run --frames 16 \
+  --shot-prompt "A calm luminous ocean breathes slowly." \
+  --shot-prompt "A frantic neon tunnel accelerates." \
+  --shot-duration 1 \
+  --shot-duration 1
+```
 
 ## R2 Tuple Boundary
 
@@ -338,16 +380,19 @@ Cost knobs:
 4. publish successful env/model tuples before terminating the builder instance;
 5. never keep an instance alive just to preserve a loaded model unless the user explicitly asks.
 
-## Done State For First Implementation
+## Done State
 
-The first complete implementation is done when:
+Local plumbing is done when:
 
 1. no-cost local selftests pass;
 2. `bash scripts/check.sh` passes;
 3. a dry-run LongLive2 SP plan emits a deterministic two-GPU launch command;
-4. a paid BF16 two-GPU smoke produces one local MP4 and a run report;
-5. per-GPU telemetry proves both cards were used;
-6. the instance is destroyed and active instances are checked;
-7. the reusable tuple is published to R2 if the environment is worth preserving;
-8. docs record the exact run root, timings, spend, and artifact paths.
+4. docs list the exact scripts and boundaries.
 
+First paid validation is done when:
+
+1. a paid BF16 two-GPU smoke produces one local MP4 and a run report;
+2. per-GPU telemetry proves both cards were used;
+3. the instance is destroyed and active instances are checked;
+4. the reusable tuple is published to R2 if the environment is worth preserving;
+5. docs record the exact run root, timings, spend, and artifact paths.

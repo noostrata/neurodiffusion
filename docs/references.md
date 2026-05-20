@@ -30,9 +30,11 @@
 - Daydream Scope system requirements: https://docs.daydream.live/scope/reference/system-requirements
 - Daydream Scope repo: https://github.com/daydreamlive/scope
 - LongLive upstream: https://github.com/NVlabs/LongLive
+- LongLive 1.0 paper: https://arxiv.org/abs/2509.22622
 - LongLive2 project page: https://nvlabs.github.io/LongLive/LongLive2/
 - LongLive2 paper: https://arxiv.org/abs/2605.18739
 - LongLive2 BF16 model card: https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B
+- LongLive2 NVFP4 S4 model card: https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B-NVFP4-S4
 - LongLive2 NVFP4 S2 model card: https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B-NVFP4-S2
-- LongLive2 usage docs: https://raw.githubusercontent.com/NVlabs/LongLive/main/docs/getting_started.md
-- LongLive2 SP config: https://raw.githubusercontent.com/NVlabs/LongLive/main/configs/inference_sp.yaml
+- LongLive2 SP config: https://raw.githubusercontent.com/NVlabs/LongLive/536d1b9a3563b078bea378aa968416543fd9d669/configs/inference_sp.yaml
+- LongLive2 upstream README snapshot: https://raw.githubusercontent.com/NVlabs/LongLive/536d1b9a3563b078bea378aa968416543fd9d669/README.md

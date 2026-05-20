@@ -15,6 +15,7 @@ VideoDiffusion/.cache/
 VideoDiffusion/.tmp/
 VideoDiffusion/.krea_runtime.env
 VideoDiffusion/.scope_runtime.env
+VideoDiffusion/.longlive2_runtime.env
 
 # Logs
 *.log

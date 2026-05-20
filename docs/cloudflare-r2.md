@@ -335,7 +335,7 @@ bash VideoDiffusion/restore_r2_prebuild.sh \
 `restore_r2_prebuild.sh` repairs restored venv console-script shebangs after extraction, because archived venvs can contain absolute paths from the publishing host.
 Then run only incremental setup steps.
 
-## Model-aware runtime tuples (MAGI + Krea + Scope)
+## Model-aware runtime tuples (MAGI + Krea + Scope + LongLive2)
 
 Use the model-aware wrappers when you need multiple video runtimes in one repo:
 
@@ -353,9 +353,8 @@ bash scripts/cloudflare/publish_everything_r2.sh \
 
 Direct runtime publish/restore dispatchers:
 
-- `bash VideoDiffusion/publish_r2_prebuild_model.sh --model <magi|krea|scope> --attn-backend <auto|sage|flash|sdpa> ...`
-- `bash VideoDiffusion/restore_r2_prebuild_model.sh --model <magi|krea|scope> --mode auto --runtime-tag <runtime_tag> ...`
-- Planned: add `--model longlive2` after the LongLive2 SP setup/download scripts exist.
+- `bash VideoDiffusion/publish_r2_prebuild_model.sh --model <magi|krea|scope|longlive2> --attn-backend <auto|sage|flash|sdpa> ...`
+- `bash VideoDiffusion/restore_r2_prebuild_model.sh --model <magi|krea|scope|longlive2> --mode auto --runtime-tag <runtime_tag> ...`
 
 Suggested Krea runtime tuple tags:
 
@@ -395,18 +394,18 @@ Scope prebuild boundary:
 4. Scope env restore repairs uv-managed Python links after extraction, because archived venvs can point at a host-local uv CPython path.
 5. For future Scope publishes, prefer `--weights-compression none` or `--weights-compression zstd` to avoid wasting time gzipping already-compressed model weights.
 
-## Planned LongLive2 SP R2 workflow
+## LongLive2 SP R2 workflow
 
 LongLive2 sequence-parallel inference is a new model family, not a Scope tuple.
 Its R2 boundary is closer to MAGI because it has a direct upstream repo, compiled extensions, and `torchrun` entry points.
 
-Planned tuple tags:
+Tuple tag families:
 
 - `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1`
 - `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1`
 - `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1`
 
-Planned R2 keys:
+R2 keys:
 
 - `neurodiffusion/env-cache/<longlive2_runtime_tag>/`
 - `neurodiffusion/weights/<longlive2_runtime_tag>/`
@@ -432,10 +431,24 @@ LongLive2 R2 cannot persist:
 
 First publish rule:
 
-1. do not publish a LongLive2 tuple from an unvalidated build;
-2. first prove import checks plus a minimal render;
+1. local plumbing exists, but do not publish a canonical LongLive2 tuple from an unvalidated build;
+2. first prove import checks plus a minimal render on the intended GPU architecture;
 3. publish before teardown only if the environment is reusable;
 4. record tuple size, restore time, render time, spend, and final teardown status in `docs/video-longlive2-sp-streaming.md` or a future observations file.
+
+LongLive2 restore pattern after a tuple exists:
+
+```bash
+cd /workspace/neurodiffusion
+bash VideoDiffusion/setup_longlive2.sh --profile bf16_sp --skip-build
+bash VideoDiffusion/restore_r2_prebuild_model.sh \
+  --model longlive2 \
+  --mode tuple \
+  --runtime-tag longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1 \
+  --apply-venv-target VideoDiffusion/.vendors/LongLive2/.venv \
+  --apply-weights-target VideoDiffusion/.cache/longlive2
+bash VideoDiffusion/run_longlive2_sp_offline.sh --profile bf16_sp --sp-size 2 --dp-size 1
+```
 
 ## Security rules
 

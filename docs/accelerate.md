@@ -117,6 +117,8 @@ Research snapshot:
 4. BF16 setup uses Python `3.10`, PyTorch `2.8.0`, TorchVision `0.23.0`, CUDA `12.8`, and FlashAttention;
 5. NVFP4 setup uses Python `3.12`, PyTorch `2.10.0+cu128`, FlashAttention `2.8.3` from source, local `fouroversix`, and the FP4 KV-cache dequant extension;
 6. upstream reports `45.7 FPS` for LongLive2-5B in the 2-step NVFP4 setup, but this repo has not validated that result.
+7. upstream LongLive 1.0 establishes the interaction pattern: causal AR inference, KV-recache for prompt switches, short-window attention, and frame sink for long-range consistency.
+8. upstream LongLive2 SP currently disables `kv_quant` inside Ulysses SP, so Hopper two-card proof starts as BF16 SP before chasing NVFP4/KV-cache speedups.
 
 Planned tuple families:
 
@@ -125,6 +127,15 @@ Planned tuple families:
 | BF16 SP | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | `H100/H200 x2` | prove one-stream two-rank inference |
 | NVFP4 S2 SM100 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1` | `B200/GB200 x1-2` | maximum speed path |
 | NVFP4 S2 SM120 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` | `RTX 50/60 x1-2` | cheaper Blackwell candidate after SM100 proof |
+
+Implemented local plumbing:
+
+1. `VideoDiffusion/setup_longlive2.sh` clones/pins LongLive2 and builds BF16 or NVFP4 environments.
+2. `VideoDiffusion/download_longlive2_models.sh` caches BF16, NVFP4 S4, or NVFP4 S2 checkpoints.
+3. `VideoDiffusion/longlive2_config.py` generates SP configs and converts EEG schedule CSVs into upstream multi-shot prompt folders.
+4. `VideoDiffusion/run_longlive2_sp_offline.sh` creates a launch plan, starts `torchrun`, records GPU telemetry, and invokes report/QA generation.
+5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` wraps two-GPU Vast selection, R2 restore, run, local pullback, and teardown.
+6. `VideoDiffusion/longlive2_run_report.py` parses SP logs, GPU telemetry, ffprobe metadata, and artifact QA.
 
 R2 fast path:
 

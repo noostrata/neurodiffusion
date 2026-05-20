@@ -66,7 +66,7 @@ Model tuple families:
 2. `krea-hopper-sage`
 3. `krea-ampere-sage-or-sdpa`
 4. existing MAGI tuples unchanged (`4.5b`, `24b`)
-5. planned LongLive2 tuples: `longlive2_bf16_sp_*`, `longlive2_nvfp4_s2_*`
+5. LongLive2 tuples after validation: `longlive2_bf16_sp_*`, `longlive2_nvfp4_s2_*`
 
 On pod boot:
 
@@ -80,7 +80,7 @@ On pod boot:
 
 Global selectors:
 
-1. `VIDEO_MODEL=magi|krea|scope|longlive`
+1. `VIDEO_MODEL=magi|krea|scope|longlive|longlive2`
 2. `ATTN_BACKEND=auto|sage|flash|sdpa`
 
 Entry points:
@@ -97,6 +97,17 @@ Scope-specific controls:
 3. server launch: `VideoDiffusion/run_scope_server.sh`
 4. pipeline load/status: `VideoDiffusion/load_scope_longlive.sh` and `VideoDiffusion/scope_pipeline.py`
 5. EEG sink: `python3 VideoDiffusion/eeg_control/run_neurofeedback_session.py --sink scope`
+
+LongLive2-specific controls:
+
+1. setup: `VideoDiffusion/setup_longlive2.sh`
+2. model download: `VideoDiffusion/download_longlive2_models.sh`
+3. config/schedule generation: `VideoDiffusion/longlive2_config.py`
+4. offline launch: `VideoDiffusion/run_longlive2_sp_offline.sh`
+5. Vast smoke: `VideoDiffusion/run_longlive2_sp_vast_smoke.sh`
+6. report: `VideoDiffusion/longlive2_run_report.py`
+
+LongLive2 EEG steering is chunk-scheduled offline today; live prompt switching needs a future persistent runner that implements prompt-boundary recache behavior.
 
 ## Acceptance tests
 

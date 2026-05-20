@@ -11,7 +11,7 @@ ATTN_BACKEND="${ATTN_BACKEND:-auto}"
 usage() {
   cat <<'EOF'
 Usage:
-  VIDEO_MODEL=<magi|krea|scope|longlive> ATTN_BACKEND=<auto|sage|flash|sdpa> bash VideoDiffusion/run_video_stream.sh [args...]
+  VIDEO_MODEL=<magi|krea|scope|longlive|longlive2> ATTN_BACKEND=<auto|sage|flash|sdpa> bash VideoDiffusion/run_video_stream.sh [args...]
 EOF
 }
 
@@ -54,6 +54,11 @@ fi
 if [[ "${VIDEO_MODEL}" == "scope" ]]; then
   video_log "Launching Daydream Scope server for LongLive."
   exec bash "${SCRIPT_DIR}/run_scope_server.sh" "$@"
+fi
+
+if [[ "${VIDEO_MODEL}" == "longlive2" ]]; then
+  video_log "Launching LongLive2 offline/SP runner."
+  exec bash "${SCRIPT_DIR}/run_longlive2_sp_offline.sh" "$@"
 fi
 
 video_log "Launching Krea realtime stream with attention policy '${ATTN_BACKEND}'."

@@ -15,7 +15,7 @@ R2_BOOTSTRAP_VENV="${R2_BOOTSTRAP_VENV:-${REPO_ROOT}/.venv/r2-bootstrap}"
 
 BUNDLE_TAG="${BUNDLE_TAG:-}"
 RUNTIME_TAG="${RUNTIME_TAG:-}"
-VIDEO_MODEL="${VIDEO_MODEL:-magi}"     # magi|krea|scope
+VIDEO_MODEL="${VIDEO_MODEL:-magi}"     # magi|krea|scope|longlive2
 ATTN_BACKEND="${ATTN_BACKEND:-auto}"   # auto|sage|flash|sdpa
 TIERS="${TIERS:-}"
 PUBLISH_PREBUILD="${PUBLISH_PREBUILD:-always}"  # always|auto|never
@@ -37,7 +37,7 @@ Usage:
 Options:
   --bundle-tag <tag>             Override code bundle tag
   --runtime-tag <tag>            Runtime tuple tag override
-  --video-model <magi|krea|scope|longlive>
+  --video-model <magi|krea|scope|longlive|longlive2>
                                   Runtime model selector (default: magi)
   --attn-backend <mode>          Attention backend hint for krea (auto|sage|flash|sdpa)
   --prefix <prefix>              R2 root prefix (default: neurodiffusion)
@@ -137,9 +137,9 @@ case "${VIDEO_MODEL}" in
   longlive)
     VIDEO_MODEL="scope"
     ;;
-  magi|krea|scope) ;;
+  magi|krea|scope|longlive2) ;;
   *)
-    echo "[error] --video-model must be magi, krea, scope, or longlive (got ${VIDEO_MODEL})." >&2
+    echo "[error] --video-model must be magi, krea, scope, longlive, or longlive2 (got ${VIDEO_MODEL})." >&2
     exit 1
     ;;
 esac
@@ -157,6 +157,8 @@ if [[ -z "${TIERS}" ]]; then
     TIERS="krea-b200-flashattn,krea-hopper-sage,krea-ampere-sage-or-sdpa"
   elif [[ "${VIDEO_MODEL}" == "scope" ]]; then
     TIERS="scope-longlive-24gb,scope-longlive-hopper"
+  elif [[ "${VIDEO_MODEL}" == "longlive2" ]]; then
+    TIERS="longlive2-bf16-sp-hopper,longlive2-nvfp4-blackwell"
   else
     TIERS="4.5b,24b"
   fi
@@ -196,6 +198,10 @@ case "${VIDEO_MODEL}" in
   scope)
     VD_VENV="${REPO_ROOT}/VideoDiffusion/.vendors/daydream-scope/.venv"
     VD_WEIGHTS="${REPO_ROOT}/VideoDiffusion/.cache/daydream-scope"
+    ;;
+  longlive2)
+    VD_VENV="${REPO_ROOT}/VideoDiffusion/.vendors/LongLive2/.venv"
+    VD_WEIGHTS="${REPO_ROOT}/VideoDiffusion/.cache/longlive2"
     ;;
   *)
     VD_VENV="${REPO_ROOT}/VideoDiffusion/.venv"
@@ -257,8 +263,10 @@ if [[ "${PURGE_LOCAL_AFTER_UPLOAD}" == "1" ]]; then
   rm -rf "${REPO_ROOT}/VideoDiffusion/.tmp"
   rm -rf "${REPO_ROOT}/VideoDiffusion/.cache/krea"
   rm -rf "${REPO_ROOT}/VideoDiffusion/.cache/daydream-scope"
+  rm -rf "${REPO_ROOT}/VideoDiffusion/.cache/longlive2"
   rm -rf "${REPO_ROOT}/VideoDiffusion/.vendors/krea-realtime-video"
   rm -rf "${REPO_ROOT}/VideoDiffusion/.vendors/daydream-scope"
+  rm -rf "${REPO_ROOT}/VideoDiffusion/.vendors/LongLive2"
   rm -rf "${REPO_ROOT}/VideoDiffusion/MAGI-1/downloads"
   rm -rf "${REPO_ROOT}/VideoDiffusion/MAGI-1/ckpt"
   rm -rf "${REPO_ROOT}/VideoDiffusion/MAGI-1/t5"

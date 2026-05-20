@@ -29,6 +29,7 @@ RUNTIME_ARCH_GPU_REGEX = {
     "sm89": re.compile(r"L40S|RTX.?4090", re.IGNORECASE),
     "sm90": re.compile(r"H100|H200|GH200", re.IGNORECASE),
     "sm100": re.compile(r"B200", re.IGNORECASE),
+    "sm120": re.compile(r"RTX.?5090", re.IGNORECASE),
 }
 
 

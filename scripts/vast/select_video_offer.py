@@ -71,6 +71,7 @@ def _select(
     *,
     selection_goal: str,
     min_gpu_count: int,
+    max_gpu_count: int,
     max_dph: float | None,
     runtime_tag: str,
     allow_runtime_gpu_mismatch: bool,
@@ -87,6 +88,8 @@ def _select(
             continue
         if num_gpus < min_gpu_count:
             continue
+        if max_gpu_count > 0 and num_gpus > max_gpu_count:
+            continue
         if max_dph is not None and dph_total > max_dph:
             continue
         if runtime_gpu_rx is not None and not allow_runtime_gpu_mismatch and not runtime_gpu_rx.search(gpu_name):
@@ -96,6 +99,7 @@ def _select(
     if not candidates:
         raise SystemExit(
             f"[error] No Vast offers satisfy min_gpu_count={min_gpu_count}"
+            + (f" max_gpu_count={max_gpu_count}" if max_gpu_count > 0 else "")
             + (f" max_dph={max_dph}" if max_dph is not None else "")
             + (
                 f" runtime_tag={runtime_tag} runtime_arch={runtime_arch}"
@@ -120,6 +124,7 @@ def _select(
         "model": scan.get("model"),
         "selection_goal": selection_goal,
         "min_gpu_count": min_gpu_count,
+        "max_gpu_count": max_gpu_count,
         "max_dph": max_dph,
         "runtime_tag": runtime_tag,
         "runtime_arch": runtime_arch,
@@ -157,6 +162,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--scan-json", required=True)
     parser.add_argument("--selection-goal", choices=["realtime", "cost"], default="realtime")
     parser.add_argument("--min-gpu-count", type=int, default=1)
+    parser.add_argument("--max-gpu-count", type=int, default=0, help="Optional upper bound; 0 means no maximum")
     parser.add_argument("--max-dph", type=float, default=None)
     parser.add_argument("--runtime-tag", default="", help="Optional R2 runtime tag; smXX tags filter to compatible GPUs")
     parser.add_argument(
@@ -175,6 +181,7 @@ def main(argv: list[str]) -> int:
         scan,
         selection_goal=args.selection_goal,
         min_gpu_count=max(1, int(args.min_gpu_count)),
+        max_gpu_count=max(0, int(args.max_gpu_count)),
         max_dph=args.max_dph,
         runtime_tag=args.runtime_tag,
         allow_runtime_gpu_mismatch=args.allow_runtime_gpu_mismatch,

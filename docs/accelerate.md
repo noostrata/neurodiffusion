@@ -46,8 +46,8 @@ Restore order for a fast next boot:
 5. load LongLive explicitly with `SCOPE_VACE_ENABLED=false`.
 
 For a single paid validation, `VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance` automates that sequence plus offer selection, WebRTC capture, synthetic EEG control, local artifact pullback, `run_report.json`, artifact QA, and teardown.
-For same-GPU resolution edge-finding, use `VideoDiffusion/run_scope_longlive_vast_sweep.sh --create-instance`; it restores once, starts Scope once, reloads LongLive for each resolution, and writes `sweep_report.{json,md}`.
-For cross-GPU paid validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh --create-instance`; it wraps the smoke path with fresh offer retries, GPU tier sequencing, adaptive resolution probes, budget/time/credit guards, and aggregate reports.
+For same-GPU resolution edge-finding, use `VideoDiffusion/run_scope_longlive_vast_sweep.sh --create-instance`; it restores once, starts Scope once, reloads LongLive for each resolution, writes `sweep_report.{json,md}`, and defaults to one-GPU offers.
+For cross-GPU paid validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh --create-instance`; it wraps the smoke path with fresh offer retries, GPU tier sequencing, adaptive resolution probes, one-GPU default selection, budget/time/credit guards, and aggregate reports.
 
 Prebuild boundary:
 
@@ -92,6 +92,16 @@ Current H200 edge probes:
 | `352x576` | `202,752` | edge candidate |
 | `368x640` | `235,520` | measured below realtime |
 | `480x832` | `399,360` | measured about half realtime |
+
+Latest same-instance H200 edge sweep:
+
+1. Selected offer was `H200 x2` before the one-GPU max-count guard was added; invoice-observed cost was about `$1.79`.
+2. `320x576` passed at `25.768 fps`.
+3. `336x592` passed at `24.757 fps`.
+4. `352x576` passed at `24.835 fps`.
+5. `368x640` failed at `22.175 fps`.
+6. Best validated realtime point is now `352x576`.
+7. Future Scope/Hopper sweeps should keep `--max-gpu-count 1` unless intentionally testing multi-GPU listings.
 
 ## 1) Why this policy
 

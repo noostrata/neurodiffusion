@@ -285,6 +285,7 @@ bash VideoDiffusion/run_scope_longlive_vast_sweep.sh \
   --create-instance \
   --gpu-regex 'H100|H200|GH200' \
   --max-dph 8.00 \
+  --max-gpu-count 1 \
   --duration-s 30 \
   --resolutions 320x576,336x592,352x576,368x640
 ```
@@ -292,13 +293,14 @@ bash VideoDiffusion/run_scope_longlive_vast_sweep.sh \
 The sweep runner is the cost/time optimization path:
 
 1. creates one paid instance;
-2. restores the Scope tuple once;
-3. starts one Scope server;
-4. reloads LongLive at each requested resolution;
-5. runs WebRTC capture and synthetic EEG for every resolution;
-6. pulls all artifacts locally before teardown;
-7. writes per-resolution `run_report.json`, `artifact_qa.json`, and `contact_sheet.jpg`;
-8. writes aggregate `sweep_report.json` and `sweep_report.md`.
+2. selects one-GPU offers by default; use `--max-gpu-count 0` only when intentionally allowing multi-GPU listings;
+3. restores the Scope tuple once;
+4. starts one Scope server;
+5. reloads LongLive at each requested resolution;
+6. runs WebRTC capture and synthetic EEG for every resolution;
+7. pulls all artifacts locally before teardown;
+8. writes per-resolution `run_report.json`, `artifact_qa.json`, and `contact_sheet.jpg`;
+9. writes aggregate `sweep_report.json` and `sweep_report.md`.
 
 Use this when the question is the maximum realtime resolution on one selected GPU.
 
@@ -335,10 +337,11 @@ Default matrix behavior:
 7. Default budget guard is conservative: `--budget-estimate-s 1800` per planned paid attempt, `--max-attempt-wall-clock-s 2400`, and `--max-wall-clock-s 14400`.
 8. `--per-attempt-fixed-cost-usd` defaults to `1.00` so the budget guard accounts for transfer/storage overhead in addition to GPU time.
 9. `--min-credit-reserve-usd` can keep a Vast credit reserve before paid creates; add `--require-credit-check` when the run must stop if credit cannot be queried.
-10. By default, the matrix stops larger upscale probes after the first failed upscale; add `--continue-after-upscale-fail` for exhaustive probing.
-11. Output is written under `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` plus `invoice_report.json` and per-attempt MP4/frame/log artifacts.
-12. The matrix does not keep instances by default; use `--keep-instance` only for intentional interactive debugging.
-13. Smoke reports include `phase_report.json`, `artifact_qa.json`, contact sheets, and `[scope-vast-ts]` UTC phase markers for setup/restore/load/capture/pullback telemetry.
+10. `--max-gpu-count` defaults to `1` for Scope/LongLive so a one-stream run does not accidentally pick multi-GPU offers.
+11. By default, the matrix stops larger upscale probes after the first failed upscale; add `--continue-after-upscale-fail` for exhaustive probing.
+12. Output is written under `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` plus `invoice_report.json` and per-attempt MP4/frame/log artifacts.
+13. The matrix does not keep instances by default; use `--keep-instance` only for intentional interactive debugging.
+14. Smoke reports include `phase_report.json`, `artifact_qa.json`, contact sheets, and `[scope-vast-ts]` UTC phase markers for setup/restore/load/capture/pullback telemetry.
 
 Use this runner when the goal is to keep going across GPUs/resolutions instead of stopping after one failed offer.
 
@@ -352,6 +355,7 @@ bash VideoDiffusion/run_scope_longlive_vast_smoke.sh \
   --create-instance \
   --gpu-regex 'H100|H200|GH200' \
   --max-dph 8.00 \
+  --max-gpu-count 1 \
   --duration-s 30
 ```
 
@@ -437,6 +441,18 @@ Observed on 2026-05-20:
 5. All runs pulled local videos and sampled coherent frames.
 6. Final active Vast instances: `[]`.
 7. H200 throughput was about `4.8-4.9 MPix/s`, so current `24 fps` probes should target `<=200k px/frame` before display upscaling.
+
+## Latest H200 Edge Sweep Result
+
+Observed on 2026-05-20:
+
+1. Same-instance sweep run root: `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/`.
+2. `320x576` passed: `748` frames, `25.768 fps`, first frame `1.384s`.
+3. `336x592` passed: `730` frames, `24.757 fps`, first frame `0.856s`.
+4. `352x576` passed: `736` frames, `24.835 fps`, first frame `0.721s`.
+5. `368x640` failed FPS: `660` frames, `22.175 fps`, first frame `0.749s`.
+6. Best validated realtime point is now `352x576`.
+7. The run selected `H200 x2`; selector defaults now enforce `--max-gpu-count 1` for future one-stream Scope sweeps.
 
 ## Sources
 

@@ -58,6 +58,82 @@ Resolution policy:
 3. downscale if target fails: `256x448`, then `192x320`;
 4. `480x832` is the next native-scale LongLive target to prove, not an already validated realtime result.
 
+## 2026-05-20 H200 same-instance edge sweep
+
+Status: complete; local artifacts pulled; paid instance destroyed.
+
+Command:
+
+```bash
+bash VideoDiffusion/run_scope_longlive_vast_sweep.sh \
+  --create-instance \
+  --gpu-regex 'H100|H200|GH200' \
+  --max-dph 8.00 \
+  --duration-s 30 \
+  --resolutions 320x576,336x592,352x576,368x640
+```
+
+Run root:
+
+```text
+/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/
+```
+
+Reports:
+
+```text
+/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/sweep_report.json
+/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/sweep_report.md
+/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/phase_report.json
+```
+
+Teardown and spend:
+
+1. selected offer: `H200 x2`, instance `37174594`, advertised rate about `$7.74/h`;
+2. final `vastai show instances --raw` returned `[]`;
+3. invoice rows for the instance were `$1.774` GPU plus `$0.014` storage, about `$1.79` total;
+4. Vast credit after teardown was about `$9.63`;
+5. the run exposed that the selector needed a maximum GPU count guard; Scope smoke/matrix selection now defaults to `--max-gpu-count 1`.
+
+Results:
+
+| Resolution | Pixels | Pass | FPS | First frame | Frames | Local video |
+| --- | ---: | --- | ---: | ---: | ---: | --- |
+| `320x576` | `184,320` | yes | `25.768` | `1.384s` | `748` | `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z_320x576_webrtc_capture.mp4` |
+| `336x592` | `198,912` | yes | `24.757` | `0.856s` | `730` | `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z_336x592_webrtc_capture.mp4` |
+| `352x576` | `202,752` | yes | `24.835` | `0.721s` | `736` | `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z_352x576_webrtc_capture.mp4` |
+| `368x640` | `235,520` | no | `22.175` | `0.749s` | `660` | `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z_368x640_webrtc_capture.mp4` |
+
+Key phase telemetry:
+
+| Phase | Duration |
+| --- | ---: |
+| create instance | `4s` |
+| SSH ready wait | `17s` |
+| remote system deps | `23s` |
+| repo sync | `35s` |
+| setup Scope | `5s` |
+| R2 restore/download | `376s` |
+| Scope server wait | `29s` |
+| LongLive load `320x576` | `27s` |
+| LongLive load `336x592` | `17s` |
+| LongLive load `352x576` | `16s` |
+| LongLive load `368x640` | `18s` |
+| artifact pullback | `120s` |
+
+Visual inspection:
+
+1. `contact_sheet.jpg` for `352x576` and `368x640` showed coherent red/blue neon hexagonal tunnel geometry;
+2. all four `artifact_qa.json` files reported `nonblank_ok: true`;
+3. the `368x640` failure is throughput only, not a generation/load failure.
+
+Conclusion:
+
+1. Same-instance sweeping works and is now the preferred edge-finding path.
+2. The current H200-class realtime ceiling for this Scope/LongLive profile is at least `352x576` (`202,752 px`) and below `368x640` (`235,520 px`).
+3. The earlier `~200k px/frame` model is directionally correct; `352x576` is the best validated realtime point so far.
+4. The next paid test should use `--max-gpu-count 1` and look for a one-GPU H200/H100/B200 or cheaper `RTX 5090`/`L40S` offer.
+
 ## 2026-05-20 H200/4090 realtime matrix
 
 Status: complete; local artifacts pulled; all paid instances destroyed.

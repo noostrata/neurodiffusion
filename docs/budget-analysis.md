@@ -186,6 +186,7 @@ bash VideoDiffusion/run_scope_longlive_vast_sweep.sh \
   --create-instance \
   --gpu-regex 'H100|H200|GH200' \
   --max-dph 8.00 \
+  --max-gpu-count 1 \
   --duration-s 30 \
   --resolutions 320x576,336x592,352x576,368x640
 ```
@@ -211,6 +212,7 @@ Budget controls:
 7. `--min-credit-reserve-usd` can keep a Vast credit reserve before paid creates; use `--require-credit-check` if the run must stop when credit cannot be queried.
 8. The default matrix no longer includes `RTX 4090`; use `--tiers rtx4090_lowres` only for explicit protocol/quality checks.
 9. Paid matrix reports also write a sanitized `invoice_report.json` that keeps only matching invoice rows for created instance ids when Vast exposes them.
+10. `--max-gpu-count` defaults to `1` for Scope/LongLive selectors; use `0` only when intentionally allowing multi-GPU listings.
 
 ### Vast Scope/LongLive H200/4090 matrix spend (2026-05-20)
 
@@ -230,6 +232,27 @@ Cost interpretation:
 2. H200 transfer charges were near-zero in this invoice sample, while the 4090 restore charged about `$0.758` for download.
 3. Same-instance multi-resolution sweeps should be cheaper and faster than one fresh instance per resolution because they amortize provision, R2 restore, Scope server startup, and teardown.
 4. The H200 results imply about `4.8-4.9 MPix/s`; `24 fps` therefore wants about `<=200k px/frame` before display upscaling.
+
+### Vast Scope/LongLive H200 edge sweep spend (2026-05-20)
+
+Paid run; instance destroyed after local pullback.
+
+Run root:
+
+```text
+/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/
+```
+
+| Instance | GPU listing | Advertised rate | Invoice cost | Notes |
+| ---: | --- | ---: | ---: | --- |
+| `37174594` | `H200 x2` | `$7.74/h` | `$1.788` | same-instance sweep across four resolutions |
+
+Cost interpretation:
+
+1. The same-instance sweep covered four resolutions for less than half the prior four-instance matrix spend.
+2. It still selected `H200 x2`, which is unnecessary for a one-stream Scope test; the selector now defaults `--max-gpu-count 1`.
+3. Future comparable one-GPU sweeps should be cheaper if a one-GPU H100/H200/GH200 listing is available.
+4. Vast credit after teardown was about `$9.63`.
 
 ### Prime managed disk rates in `eu_north` (USD / GB-hour)
 

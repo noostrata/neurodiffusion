@@ -20,6 +20,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -158,6 +160,7 @@ def query_and_select_offer(
     row_idx: int,
     selection_goal: str,
     allow_runtime_gpu_mismatch: bool,
+    max_gpu_count: int,
     scan_retries: int,
     scan_sleep_s: int,
 ) -> tuple[dict[str, Any] | None, str]:
@@ -197,6 +200,8 @@ def query_and_select_offer(
                 "--out-json",
                 str(selected_json),
             ]
+            if max_gpu_count > 0:
+                select_cmd.extend(["--max-gpu-count", str(max_gpu_count)])
             if allow_runtime_gpu_mismatch:
                 select_cmd.append("--allow-runtime-gpu-mismatch")
             selected = run_cmd(select_cmd, cwd=REPO_ROOT)
@@ -512,7 +517,20 @@ def vast_credit_summary() -> dict[str, Any]:
     try:
         payload = json.loads(proc.stdout)
     except json.JSONDecodeError:
-        return {"checked": False, "credit_usd": None, "error": "could not parse vastai show user"}
+        payload = None
+    if payload is None:
+        key_path = Path.home() / ".config" / "vastai" / "vast_api_key"
+        if not key_path.is_file():
+            return {"checked": False, "credit_usd": None, "error": "could not parse vastai show user"}
+        api_key = key_path.read_text(encoding="utf-8").strip()
+        if not api_key:
+            return {"checked": False, "credit_usd": None, "error": "vast api key file is empty"}
+        url = "https://console.vast.ai/api/v0/users/current?" + urllib.parse.urlencode({"api_key": api_key})
+        try:
+            with urllib.request.urlopen(url, timeout=20) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            return {"checked": False, "credit_usd": None, "error": f"direct Vast credit query failed: {type(exc).__name__}"}
     credit = extract_credit_usd(payload)
     if credit is None:
         return {"checked": False, "credit_usd": None, "error": "credit field not found"}
@@ -836,6 +854,7 @@ def run_matrix(args: argparse.Namespace) -> int:
                     row_idx=len(rows) + 1,
                     selection_goal=args.selection_goal,
                     allow_runtime_gpu_mismatch=args.allow_runtime_gpu_mismatch,
+                    max_gpu_count=args.max_gpu_count,
                     scan_retries=args.scan_retries,
                     scan_sleep_s=args.scan_sleep_s,
                 )
@@ -906,6 +925,7 @@ def run_matrix(args: argparse.Namespace) -> int:
                     row_idx=len(rows) + 1,
                     selection_goal=args.selection_goal,
                     allow_runtime_gpu_mismatch=args.allow_runtime_gpu_mismatch,
+                    max_gpu_count=args.max_gpu_count,
                     scan_retries=args.scan_retries,
                     scan_sleep_s=args.scan_sleep_s,
                 )
@@ -1093,6 +1113,7 @@ def selftest() -> int:
         per_attempt_fixed_cost_usd=0.0,
         min_credit_reserve_usd=0.0,
         require_credit_check=False,
+        max_gpu_count=1,
         max_attempts=1,
     )
     with tempfile.TemporaryDirectory() as tmp:
@@ -1161,6 +1182,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Fail/skip paid rows if Vast credit cannot be checked before launch",
     )
+    parser.add_argument(
+        "--max-gpu-count",
+        type=int,
+        default=1,
+        help="Maximum GPUs in selected Scope offers; 0 disables the limit",
+    )
     parser.add_argument("--max-attempts", type=int, default=10)
     parser.add_argument("--max-wall-clock-s", type=int, default=14400)
     parser.add_argument("--max-attempt-wall-clock-s", type=int, default=2400)
@@ -1207,6 +1234,8 @@ def main(argv: list[str]) -> int:
         parser.error("--max-budget-usd must be positive")
     if args.min_credit_reserve_usd < 0:
         parser.error("--min-credit-reserve-usd must be >= 0")
+    if args.max_gpu_count < 0:
+        parser.error("--max-gpu-count must be >= 0")
     parse_tiers(args.tiers)
     parse_resolution(args.target_res)
     parse_resolution_list(args.lower_resolutions)

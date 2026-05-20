@@ -19,6 +19,7 @@ def test_realtime_prefers_gpu_rank_before_price() -> None:
         },
         selection_goal="realtime",
         min_gpu_count=1,
+        max_gpu_count=0,
         max_dph=None,
         runtime_tag="",
         allow_runtime_gpu_mismatch=False,
@@ -37,6 +38,7 @@ def test_cost_prefers_price_before_gpu_rank() -> None:
         },
         selection_goal="cost",
         min_gpu_count=1,
+        max_gpu_count=0,
         max_dph=None,
         runtime_tag="",
         allow_runtime_gpu_mismatch=False,
@@ -55,11 +57,31 @@ def test_min_gpu_count_filter() -> None:
         },
         selection_goal="cost",
         min_gpu_count=4,
+        max_gpu_count=0,
         max_dph=None,
         runtime_tag="",
         allow_runtime_gpu_mismatch=False,
     )
     assert selected["selected_offer"]["offer_id"] == "four"
+
+
+def test_max_gpu_count_filter() -> None:
+    selected = _select(
+        {
+            "model": "scope",
+            "offers": [
+                {"offer_id": "h200x2", "gpu_name": "H200", "num_gpus": 2, "dph_total": 7.7},
+                {"offer_id": "h200x1", "gpu_name": "H200", "num_gpus": 1, "dph_total": 4.3},
+            ],
+        },
+        selection_goal="cost",
+        min_gpu_count=1,
+        max_gpu_count=1,
+        max_dph=None,
+        runtime_tag="",
+        allow_runtime_gpu_mismatch=False,
+    )
+    assert selected["selected_offer"]["offer_id"] == "h200x1"
 
 
 def test_sm80_runtime_tag_filters_to_a100() -> None:
@@ -73,6 +95,7 @@ def test_sm80_runtime_tag_filters_to_a100() -> None:
         },
         selection_goal="cost",
         min_gpu_count=1,
+        max_gpu_count=0,
         max_dph=None,
         runtime_tag="hopper_sm80_py310_torch240_cu124_20260217_prebuild1",
         allow_runtime_gpu_mismatch=False,
@@ -91,6 +114,7 @@ def test_scope_cost_accepts_4090_tier() -> None:
         },
         selection_goal="cost",
         min_gpu_count=1,
+        max_gpu_count=0,
         max_dph=None,
         runtime_tag="",
         allow_runtime_gpu_mismatch=False,

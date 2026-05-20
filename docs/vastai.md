@@ -197,11 +197,12 @@ bash VideoDiffusion/run_scope_longlive_vast_sweep.sh \
   --create-instance \
   --gpu-regex 'H100|H200|GH200' \
   --max-dph 8.00 \
+  --max-gpu-count 1 \
   --duration-s 30 \
   --resolutions 320x576,336x592,352x576,368x640
 ```
 
-The sweep runner provisions once, restores the R2 tuple once, starts Scope once, reloads LongLive per resolution, runs WebRTC plus synthetic EEG per resolution, pulls all artifacts locally, writes `sweep_report.{json,md}`, and tears down by default.
+The sweep runner provisions once, selects one-GPU offers by default, restores the R2 tuple once, starts Scope once, reloads LongLive per resolution, runs WebRTC plus synthetic EEG per resolution, pulls all artifacts locally, writes `sweep_report.{json,md}`, and tears down by default.
 
 ## Scope/LongLive realtime matrix path
 
@@ -224,8 +225,9 @@ The matrix runner:
 4. delegates each paid attempt to the Scope smoke runner, preserving local artifact pullback and teardown;
 5. leaves `rtx4090_lowres` available only when explicitly requested with `--tiers rtx4090_lowres`;
 6. can preserve a credit reserve with `--min-credit-reserve-usd`;
-7. writes `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` and sanitized `invoice_report.json`;
-8. checks final active instance count after paid runs without writing raw host/IP data into tracked docs.
+7. defaults to `--max-gpu-count 1` so one-stream Scope runs do not select multi-GPU listings accidentally;
+8. writes `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` and sanitized `invoice_report.json`;
+9. checks final active instance count after paid runs without writing raw host/IP data into tracked docs.
 
 Latest matrix telemetry (`scope_longlive_vast_matrix_20260520T200307Z`):
 
@@ -237,6 +239,16 @@ Latest matrix telemetry (`scope_longlive_vast_matrix_20260520T200307Z`):
 6. Final active instances were `[]`.
 7. H200 throughput was consistently about `4.8-4.9 MPix/s`, making `~200k px/frame` the current practical ceiling for `24 fps`.
 
+Latest same-instance sweep (`scope_longlive_vast_smoke_20260520T211512Z`):
+
+1. `320x576` passed at `25.768 fps`.
+2. `336x592` passed at `24.757 fps`.
+3. `352x576` passed at `24.835 fps`.
+4. `368x640` failed at `22.175 fps`.
+5. Final active instances were `[]`.
+6. Best validated realtime resolution is now `352x576`.
+7. This run selected `H200 x2`; future runs should keep `--max-gpu-count 1` unless intentionally allowing multi-GPU offers.
+
 ## Scope/LongLive realtime smoke path
 
 For one realtime validation attempt, use the Scope wrapper:
@@ -247,6 +259,7 @@ bash VideoDiffusion/run_scope_longlive_vast_smoke.sh \
   --create-instance \
   --gpu-regex 'H100|H200|GH200' \
   --max-dph 8.00 \
+  --max-gpu-count 1 \
   --duration-s 30
 ```
 

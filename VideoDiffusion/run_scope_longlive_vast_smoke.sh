@@ -24,6 +24,7 @@ DESTROY_ON_EXIT="${SCOPE_VAST_DESTROY_ON_EXIT:-}"
 OFFER_ID="${VAST_OFFER_ID:-}"
 GPU_REGEX="${SCOPE_VAST_GPU_REGEX:-RTX.?4090|RTX.?5090|L40S}"
 MAX_DPH="${SCOPE_VAST_MAX_DPH:-1.50}"
+MAX_GPU_COUNT="${SCOPE_VAST_MAX_GPU_COUNT:-1}"
 SELECTION_GOAL="${SCOPE_VAST_SELECTION_GOAL:-cost}"
 ALLOW_RUNTIME_GPU_MISMATCH="${SCOPE_VAST_ALLOW_RUNTIME_GPU_MISMATCH:-1}"
 VAST_DISK_GB="${VAST_DISK_GB:-220}"
@@ -62,6 +63,7 @@ Options:
   --offer-id <id>               Use an explicit Vast offer id when creating
   --gpu-regex <regex>           Cheap-GPU filter for offer query (default: ${GPU_REGEX})
   --max-dph <usd>               Max selected hourly rate (default: ${MAX_DPH})
+  --max-gpu-count <count>       Max GPUs in selected offer; 0 disables limit (default: ${MAX_GPU_COUNT})
   --runtime-tag <tag>           R2 Scope runtime tuple (default: ${RUNTIME_TAG})
   --duration-s <seconds>        WebRTC benchmark duration (default: ${BENCHMARK_DURATION_S})
   --height <pixels>             LongLive output height, divisible by 16 (default: ${SCOPE_HEIGHT})
@@ -105,6 +107,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --max-dph)
       MAX_DPH="$2"
+      shift 2
+      ;;
+    --max-gpu-count)
+      MAX_GPU_COUNT="$2"
       shift 2
       ;;
     --runtime-tag)
@@ -316,6 +322,9 @@ select_offer_if_needed() {
   )
   if [[ -n "${MAX_DPH}" ]]; then
     select_args+=(--max-dph "${MAX_DPH}")
+  fi
+  if [[ -n "${MAX_GPU_COUNT}" ]]; then
+    select_args+=(--max-gpu-count "${MAX_GPU_COUNT}")
   fi
   if [[ "${ALLOW_RUNTIME_GPU_MISMATCH}" == "1" ]]; then
     select_args+=(--allow-runtime-gpu-mismatch)

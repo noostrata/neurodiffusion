@@ -100,7 +100,7 @@ Scope-specific controls:
 
 1. No-cost selftests pass, including fake Scope OSC prompt delivery and the Scope/Vast matrix selftest.
 2. Scope/LongLive cold setup reaches pipeline `loaded`.
-3. Sweep or matrix run proves at least one tier at `>=24 fps`, first frame `<=2s`, synthetic EEG OSC updates, local MP4 pullback, `phase_report.json`, and artifact QA.
+3. Sweep or matrix run proves at least one tier at `>=24 fps`, first frame `<=2s`, synthetic EEG OSC updates, local MP4 pullback, `phase_report.json`, and artifact QA. Current best validated Scope/LongLive point is `352x576` on H200-class hardware.
 4. Steering latency run (20 EEG-triggered changes) reports acceptable prompt-to-visible-change `p50/p90`.
 5. 30-minute soak has no OOM/restart.
 6. Equal-latency quality A/B confirms selected tier/backend beats baseline.

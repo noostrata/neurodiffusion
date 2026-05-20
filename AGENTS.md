@@ -94,6 +94,7 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - Latest validated Scope tuple: `scope_auto_py312_torch2.9.1_cu128_sm100` for B200 / SM100.
 - Latest realtime Scope result: `B200 x1` held the current `320x576` target at `>=24 fps` with synthetic EEG steering.
 - Latest H200 matrix result: `H200 x1` passed `320x576` (`25.376 fps`) but failed `368x640` (`20.835 fps`) and `480x832` (`12.171 fps`).
+- Latest H200 same-instance edge sweep: `352x576` passed (`24.835 fps`) and `368x640` failed (`22.175 fps`); best validated realtime point is now `352x576`.
 - Current H200 throughput model is about `4.8-4.9 MPix/s`; a `24 fps` realtime target should stay near or below `200k px/frame` unless a faster GPU/runtime path is proven.
 - Latest cheap Scope result: `RTX 4090 x1` generates valid output but is not realtime at `320x576` (`11.310 fps`).
 - Latest low-res 4090 result: `RTX 4090 x1` failed realtime at `256x448` (`12.912 fps`, first frame `4.693s`).
@@ -112,6 +113,7 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - For one paid validation, use `VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance`; it queries/selects, provisions, restores, captures, pulls artifacts, writes `run_report.json`, and tears down by default.
 - For same-GPU resolution edge finding, prefer `VideoDiffusion/run_scope_longlive_vast_sweep.sh --create-instance`; it creates one instance, restores once, starts Scope once, then writes per-resolution `run_report.json` files plus `sweep_report.json`.
 - For cross-GPU offer validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh --create-instance`; it retries fresh offers, sweeps GPU tiers and adaptive resolutions, keeps budget/time bounds, writes matrix JSON/CSV/Markdown, and still delegates each paid attempt to the smoke runner for teardown and local artifact pullback.
+- Scope/LongLive paid selection defaults to one-GPU offers. Use `--max-gpu-count 0` only when intentionally allowing multi-GPU listings.
 - Treat telemetry as part of the artifact contract: preserve `run_report.json`, `sweep_report.*`, `matrix_report.*`, `phase_report.json`, `artifact_qa.json`, sampled frames/contact sheets, ffprobe output, invoice/spend notes, and `[scope-vast-ts]` phase markers when available.
 
 ## Local Artifact Rule

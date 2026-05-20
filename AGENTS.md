@@ -91,7 +91,9 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
   - `VideoDiffusion/run_scope_longlive_vast_matrix.sh`
 - Latest validated Scope tuple: `scope_auto_py312_torch2.9.1_cu128_sm100` for B200 / SM100.
 - Latest realtime Scope result: `B200 x1` held the current `320x576` target at `>=24 fps` with synthetic EEG steering.
+- Latest H200 matrix result: `H200 x1` passed `320x576` (`25.376 fps`) but failed `368x640` (`20.835 fps`) and `480x832` (`12.171 fps`).
 - Latest cheap Scope result: `RTX 4090 x1` generates valid output but is not realtime at `320x576` (`11.310 fps`).
+- Latest low-res 4090 result: `RTX 4090 x1` failed realtime at `256x448` (`12.912 fps`, first frame `4.693s`).
 - LongLive native/paper-scale target for the next max-resolution pass is `480x832` (`832x480` display orientation); the repo has only proven realtime at `320x576` so far.
 - R2 prebuild can restore the Scope uv env and LongLive/Wan model cache; it cannot preserve a live loaded GPU model.
 - For a fast fresh boot: clone repo, run `SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh`, restore the Scope tuple, start with `SCOPE_AUTO_LOAD=0`, then load LongLive with `SCOPE_VACE_ENABLED=false`.
@@ -105,6 +107,7 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - For headless GPU validation, use `VideoDiffusion/scope_webrtc_benchmark.py` and synthetic EEG concurrently, then pull the recorded MP4 and sampled frames before teardown.
 - For paid cheap-GPU validation, prefer `VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance`; it queries/selects, provisions, restores, captures, pulls artifacts, writes `run_report.json`, and tears down by default.
 - For systematic realtime validation, prefer `VideoDiffusion/run_scope_longlive_vast_matrix.sh --create-instance`; it retries fresh offers, sweeps GPU tiers and resolutions, keeps budget/time bounds, writes matrix JSON/CSV/Markdown, and still delegates each paid attempt to the smoke runner for teardown and local artifact pullback.
+- Treat telemetry as part of the artifact contract: preserve `run_report.json`, `matrix_report.*`, sampled frames, ffprobe output, invoice/spend notes, and `[scope-vast-ts]` phase markers when available.
 
 ## Local Artifact Rule
 

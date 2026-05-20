@@ -157,6 +157,11 @@ q() {
   printf "%q" "$1"
 }
 
+mark_phase() {
+  local phase="$1"
+  printf '[scope-vast-ts] %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${phase}"
+}
+
 remote_ssh() {
   ssh -i "${SSH_KEY_PATH}" \
     -p "${VAST_SSH_PORT}" \
@@ -587,28 +592,56 @@ if [[ ! -f "${SSH_KEY_PATH}" ]]; then
 fi
 
 cd "${REPO_ROOT}"
+mark_phase "create_instance_start"
 create_instance_if_requested
+mark_phase "create_instance_done"
 
+mark_phase "resolve_ssh_start"
 eval "$(VAST_INSTANCE_ID="${VAST_INSTANCE_ID}" bash scripts/vast/resolve_ssh.sh)"
+mark_phase "resolve_ssh_done"
+mark_phase "ssh_ready_wait_start"
 wait_for_ssh_auth
+mark_phase "ssh_ready_wait_done"
 
 remote_gpu="$(remote_ssh "nvidia-smi --query-gpu=name --format=csv,noheader | head -n1" | tr -d '\r')"
 echo "[scope-vast] run_id=${RUN_ID}"
 echo "[scope-vast] instance=${VAST_INSTANCE_ID} gpu=${remote_gpu}"
 echo "[scope-vast] runtime_tag=${RUNTIME_TAG}"
 
+mark_phase "remote_system_deps_start"
 ensure_remote_system_deps
+mark_phase "remote_system_deps_done"
+mark_phase "repo_sync_start"
 sync_repo_to_remote
+mark_phase "repo_sync_done"
 if [[ "${RESTORE_TUPLE}" == "1" ]]; then
+  mark_phase "copy_r2_secret_start"
   copy_r2_secret
+  mark_phase "copy_r2_secret_done"
 fi
+mark_phase "setup_scope_start"
 remote_setup_scope
+mark_phase "setup_scope_done"
+mark_phase "restore_or_download_start"
 remote_restore_or_download
+mark_phase "restore_or_download_done"
+mark_phase "scope_server_start"
 start_scope_server
+mark_phase "scope_server_started"
+mark_phase "scope_server_wait_start"
 wait_for_scope_server
+mark_phase "scope_server_wait_done"
+mark_phase "longlive_load_start"
 load_longlive
+mark_phase "longlive_load_done"
+mark_phase "webrtc_eeg_start"
 run_webrtc_and_eeg
+mark_phase "webrtc_eeg_done"
+mark_phase "artifact_pull_start"
 pull_artifacts
+mark_phase "artifact_pull_done"
+mark_phase "local_report_start"
 write_local_report
+mark_phase "local_report_done"
 echo "[scope-vast] local_dir=${LOCAL_OUT_DIR}"
 echo "[scope-vast] local_video=${FLAT_LOCAL_VIDEO}"

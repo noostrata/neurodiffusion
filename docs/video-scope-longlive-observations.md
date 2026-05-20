@@ -58,6 +58,77 @@ Resolution policy:
 3. downscale if target fails: `256x448`, then `192x320`;
 4. `480x832` is the next native-scale LongLive target to prove, not an already validated realtime result.
 
+## 2026-05-20 H200/4090 realtime matrix
+
+Status: complete; local artifacts pulled; all paid instances destroyed.
+
+Command:
+
+```bash
+bash VideoDiffusion/run_scope_longlive_vast_matrix.sh \
+  --create-instance \
+  --max-budget-usd 14.75 \
+  --max-attempts 4 \
+  --duration-s 30 \
+  --per-attempt-fixed-cost-usd 1.00 \
+  --scan-retries 2 \
+  --scan-sleep-s 30
+```
+
+Run root:
+
+```text
+/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/
+```
+
+Matrix reports:
+
+```text
+/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/matrix_report.json
+/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/matrix_report.csv
+/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/matrix_report.md
+```
+
+Teardown and balance:
+
+1. final `vastai show instances --raw` returned `[]`;
+2. Vast credit moved from `$15.519453` before the run to `$11.424968` after the run;
+3. invoice-observed spend for the four new instances was about `$4.10`;
+4. the matrix report's spend estimate remains conservative because it adds a configurable fixed per-attempt overhead.
+
+Results:
+
+| Attempt | GPU | Resolution | Pass | FPS | First frame | Frames | Invoice cost | Local video |
+| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
+| 1 | `H200` | `320x576` | yes | `25.376` | `1.338s` | `737` | `$1.681` | `/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_01_hopper_320x576_webrtc_capture.mp4` |
+| 2 | `H200` | `368x640` | no | `20.835` | `1.506s` | `600` | `$0.890` | `/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_02_hopper_368x640_webrtc_capture.mp4` |
+| 3 | `H200` | `480x832` | no | `12.171` | `1.793s` | `348` | `$0.624` | `/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_03_hopper_480x832_webrtc_capture.mp4` |
+| 4 | `RTX 4090` | `256x448` | no | `12.912` | `4.693s` | `333` | `$0.907` | `/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_04_rtx4090_lowres_256x448_webrtc_capture.mp4` |
+
+Telemetry:
+
+| Attempt | Matrix elapsed | 30s benchmark elapsed | Setup/restore/load/pull overhead |
+| ---: | ---: | ---: | ---: |
+| 1 | `776.4s` | `30.4s` | `746.0s` |
+| 2 | `575.0s` | `30.3s` | `544.7s` |
+| 3 | `514.9s` | `30.4s` | `484.6s` |
+| 4 | `585.4s` | `30.5s` | `554.9s` |
+
+Visual inspection:
+
+1. sampled `frame_000024.png` from all four attempts;
+2. all samples showed coherent red/blue neon tunnel geometry;
+3. the failures were throughput/latency failures, not blank output or obvious model-load corruption.
+
+Conclusions:
+
+1. `H200` is a valid realtime tier for the current `320x576` Scope/LongLive target.
+2. `H200` did not hold realtime at `368x640` or `480x832` in this run.
+3. `480x832` can load and generate, but it is about half realtime on the sampled H200 path.
+4. `RTX 4090` is still not realtime even at `256x448`; it should not be a default Scope/LongLive realtime tier.
+5. The main pipeline inefficiency is repeated cold restore per resolution. The next optimization is a same-instance multi-resolution sweep that restores once, then reloads LongLive at multiple resolutions before teardown.
+6. Future smoke logs now include `[scope-vast-ts]` UTC phase markers so setup, restore, load, capture, pullback, and report timings are directly parseable.
+
 ## 2026-05-20 cheap-GPU automation prep
 
 Status: local runner implemented; first cheap-GPU validation recorded below.

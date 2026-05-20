@@ -192,9 +192,28 @@ Budget controls:
 
 1. `--max-budget-usd` is the run-level ceiling.
 2. `--budget-estimate-s` defaults to `1800`, so an offer must fit a conservative 30-minute planned charge before launch.
-3. `--max-attempt-wall-clock-s` defaults to `2400`; a timed-out smoke receives `SIGTERM`, then the matrix tries to terminate its parsed owned instance id.
-4. Every paid attempt still uses the smoke runner teardown path unless `--keep-instance` is explicitly passed.
-5. Final matrix reports estimate spend from observed wall-clock time times the selected offer hourly rate.
+3. `--per-attempt-fixed-cost-usd` defaults to `1.00`, adding a transfer/storage overhead estimate to planned and observed matrix cost.
+4. `--max-attempt-wall-clock-s` defaults to `2400`; a timed-out smoke receives `SIGTERM`, then the matrix tries to terminate its parsed owned instance id.
+5. Every paid attempt still uses the smoke runner teardown path unless `--keep-instance` is explicitly passed.
+6. Final matrix reports estimate spend from observed wall-clock time times the selected offer hourly rate plus the configured fixed overhead.
+
+### Vast Scope/LongLive H200/4090 matrix spend (2026-05-20)
+
+Actual invoice-observed spend for `scope_longlive_vast_matrix_20260520T200307Z` was about `$4.10`.
+Vast credit moved from `$15.519453` to `$11.424968`.
+
+| Instance | GPU | Resolution | Invoice cost | Notes |
+| ---: | --- | --- | ---: | --- |
+| `37170799` | `H200` | `320x576` | `$1.681` | passed realtime |
+| `37171500` | `H200` | `368x640` | `$0.890` | failed FPS |
+| `37172066` | `H200` | `480x832` | `$0.624` | failed FPS |
+| `37172562` | `RTX 4090` | `256x448` | `$0.907` | failed FPS and first-frame latency |
+
+Cost interpretation:
+
+1. H200 target validation is affordable enough for short sweeps, but cold restore dominates wall-clock time.
+2. H200 transfer charges were near-zero in this invoice sample, while the 4090 restore charged about `$0.758` for download.
+3. Same-instance multi-resolution sweeps should be cheaper and faster than one fresh instance per resolution.
 
 ### Prime managed disk rates in `eu_north` (USD / GB-hour)
 

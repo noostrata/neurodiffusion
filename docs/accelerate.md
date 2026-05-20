@@ -71,7 +71,15 @@ Latest cheap-GPU result:
 
 1. `RTX 4090 x1` generated coherent output at `320x576`.
 2. It only received `11.310 fps`, with first frame at `2.480s`.
-3. Treat 4090 as a protocol/quality-check tier for this profile unless a lower-resolution experiment proves otherwise.
+3. A later `256x448` 4090 matrix probe still failed realtime at `12.912 fps`, first frame `4.693s`.
+4. Treat 4090 as a protocol/quality-check tier for this profile, not a default realtime tier.
+
+Latest H200 matrix result:
+
+1. `H200` passed `320x576` at `25.376 fps`, first frame `1.338s`.
+2. `H200` failed `368x640` at `20.835 fps`.
+3. `H200` failed `480x832` at `12.171 fps`.
+4. The next acceleration target is same-instance resolution sweeping, because each fresh instance currently spends roughly `8-13 min` in cold setup/restore/load/pullback around a `30s` benchmark.
 
 ## 1) Why this policy
 

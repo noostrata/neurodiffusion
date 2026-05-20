@@ -305,8 +305,10 @@ Default matrix behavior:
 5. The 4090 tier skips the known-failed `320x576` target and only tests lower-resolution operating points.
 6. Tier rate ceilings are `$2.50/h` for cheap-mid, `$8.00/h` for Hopper, `$8.00/h` for B200, and `$1.50/h` for 4090 low-res.
 7. Default budget guard is conservative: `--budget-estimate-s 1800` per planned paid attempt, `--max-attempt-wall-clock-s 2400`, and `--max-wall-clock-s 14400`.
-8. Output is written under `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` plus per-attempt MP4/frame/log artifacts.
-9. The matrix does not keep instances by default; use `--keep-instance` only for intentional interactive debugging.
+8. `--per-attempt-fixed-cost-usd` defaults to `1.00` so the budget guard accounts for transfer/storage overhead in addition to GPU time.
+9. Output is written under `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` plus per-attempt MP4/frame/log artifacts.
+10. The matrix does not keep instances by default; use `--keep-instance` only for intentional interactive debugging.
+11. Smoke logs include `[scope-vast-ts]` UTC phase markers for setup/restore/load/capture/pullback telemetry.
 
 Use this runner when the goal is to keep going across GPUs/resolutions instead of stopping after one failed offer.
 
@@ -393,6 +395,17 @@ Observed on 2026-05-20:
 4. Local MP4: `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4`.
 5. Local frame: `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_frame_000024.png`.
 6. Result: fail for realtime at `320x576`; keep 4090 only for protocol/quality checks or a future lower-resolution experiment.
+
+## Latest H200 Matrix Result
+
+Observed on 2026-05-20:
+
+1. `H200` passed `320x576`: `737` frames, `25.376 fps`, first frame `1.338s`.
+2. `H200` failed `368x640`: `600` frames, `20.835 fps`, first frame `1.506s`.
+3. `H200` failed `480x832`: `348` frames, `12.171 fps`, first frame `1.793s`.
+4. `RTX 4090` failed `256x448`: `333` frames, `12.912 fps`, first frame `4.693s`.
+5. All runs pulled local videos and sampled coherent frames.
+6. Final active Vast instances: `[]`.
 
 ## Sources
 

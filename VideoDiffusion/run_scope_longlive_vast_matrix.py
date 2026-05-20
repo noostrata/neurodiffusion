@@ -248,6 +248,10 @@ def estimate_cost_usd(dph_total: Any, seconds: float) -> float:
     return max(0.0, dph * max(0.0, seconds) / 3600.0)
 
 
+def estimate_attempt_cost_usd(dph_total: Any, seconds: float, fixed_cost_usd: float) -> float:
+    return estimate_cost_usd(dph_total, seconds) + max(0.0, fixed_cost_usd)
+
+
 def parse_smoke_report(report_path: Path) -> dict[str, Any]:
     if not report_path.is_file():
         return {}
@@ -422,7 +426,10 @@ def run_smoke_attempt(
         "first_frame_latency_s": value_or_blank(benchmark, "first_frame_latency_s"),
         "frame_count": value_or_blank(benchmark, "frame_count"),
         "elapsed_s": round(elapsed, 3),
-        "estimated_cost_usd": round(estimate_cost_usd(offer.get("dph_total"), elapsed), 4),
+        "estimated_cost_usd": round(
+            estimate_attempt_cost_usd(offer.get("dph_total"), elapsed, args.per_attempt_fixed_cost_usd),
+            4,
+        ),
         "local_dir": str(local_dir),
         "flat_local_video": str(flat_video) if flat_video.is_file() else "",
         "report_path": str(report_path) if report_path.is_file() else "",
@@ -477,7 +484,7 @@ def write_reports(
 
     passed = [row for row in numbered_rows if row.get("status") == "PASS"]
     attempted = [row for row in numbered_rows if row.get("attempt_idx")]
-    spend = sum(float(row.get("estimated_cost_usd") or 0.0) for row in numbered_rows)
+    spend = sum(float(row.get("estimated_cost_usd") or 0.0) for row in attempted)
     payload = {
         "matrix_run_id": matrix_run_id,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -492,6 +499,7 @@ def write_reports(
         "budget": {
             "max_budget_usd": args.max_budget_usd,
             "budget_estimate_s": args.budget_estimate_s,
+            "per_attempt_fixed_cost_usd": args.per_attempt_fixed_cost_usd,
             "estimated_spend_usd": round(spend, 4),
             "max_attempts": args.max_attempts,
         },
@@ -580,9 +588,15 @@ def append_plan_row(
             "frame_count": "",
             "elapsed_s": "",
             "estimated_cost_usd": round(
-                estimate_cost_usd((offer or {}).get("dph_total"), args.budget_estimate_s),
+                estimate_attempt_cost_usd(
+                    offer.get("dph_total"),
+                    args.budget_estimate_s,
+                    args.per_attempt_fixed_cost_usd,
+                ),
                 4,
-            ),
+            )
+            if offer
+            else 0.0,
             "local_dir": "",
             "flat_local_video": "",
             "report_path": "",
@@ -727,7 +741,11 @@ def run_matrix(args: argparse.Namespace) -> int:
                     )
                     break
 
-                next_budget = estimate_cost_usd(offer.get("dph_total"), args.budget_estimate_s)
+                next_budget = estimate_attempt_cost_usd(
+                    offer.get("dph_total"),
+                    args.budget_estimate_s,
+                    args.per_attempt_fixed_cost_usd,
+                )
                 if spent + next_budget > args.max_budget_usd:
                     append_plan_row(
                         rows,
@@ -829,6 +847,7 @@ def selftest() -> int:
         max_first_frame_s=2.0,
         max_budget_usd=1.0,
         budget_estimate_s=30,
+        per_attempt_fixed_cost_usd=0.0,
         max_attempts=1,
     )
     with tempfile.TemporaryDirectory() as tmp:
@@ -880,6 +899,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-first-frame-s", type=float, default=2.0)
     parser.add_argument("--max-budget-usd", type=float, default=20.0)
     parser.add_argument("--budget-estimate-s", type=int, default=1800, help="Conservative seconds charged per planned paid attempt")
+    parser.add_argument(
+        "--per-attempt-fixed-cost-usd",
+        type=float,
+        default=1.0,
+        help="Estimated per-attempt transfer/storage overhead added to budget guard and reports",
+    )
     parser.add_argument("--max-attempts", type=int, default=10)
     parser.add_argument("--max-wall-clock-s", type=int, default=14400)
     parser.add_argument("--max-attempt-wall-clock-s", type=int, default=2400)

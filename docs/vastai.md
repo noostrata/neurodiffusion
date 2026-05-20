@@ -209,6 +209,15 @@ The matrix runner:
 5. writes `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}`;
 6. checks final active instance count after paid runs without writing raw host/IP data into tracked docs.
 
+Latest matrix telemetry (`scope_longlive_vast_matrix_20260520T200307Z`):
+
+1. H200 passed `320x576` at `25.376 fps`.
+2. H200 failed `368x640` at `20.835 fps`.
+3. H200 failed `480x832` at `12.171 fps`.
+4. RTX 4090 failed `256x448` at `12.912 fps`.
+5. Invoice-observed spend was about `$4.10`.
+6. Final active instances were `[]`.
+
 ## Scope/LongLive realtime smoke path
 
 For one cheap realtime validation attempt, use the Scope wrapper:

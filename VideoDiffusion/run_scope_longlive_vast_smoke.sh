@@ -202,12 +202,13 @@ destroy_instance_if_needed() {
 
 finish() {
   local rc=$?
+  trap - EXIT INT TERM
   cleanup_remote_secret
   cleanup_remote_processes
   destroy_instance_if_needed
   exit "${rc}"
 }
-trap finish EXIT
+trap finish EXIT INT TERM
 
 wait_for_ssh_auth() {
   local deadline=$((SECONDS + SSH_READY_TIMEOUT_S))

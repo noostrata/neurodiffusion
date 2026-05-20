@@ -1,6 +1,6 @@
 # Realtime Steering Architecture
 
-_Last updated: 2026-05-15_
+_Last updated: 2026-05-20_
 
 This document is the cross-model policy for realtime inference with realtime steering in this repo.
 
@@ -27,7 +27,7 @@ Definitions:
 
 | Rank | Stack | Why | Indicative hourly rate |
 | --- | --- | --- | ---: |
-| 1 | Scope + LongLive on `RTX 4090/5090/L40S` | Best first realtime EEG target; cheap, Scope-native control | `~0.74-1.21` sampled on Vast |
+| 1 | Scope + LongLive on B200/Hopper, with `RTX 5090/L40S` candidates | Best proven realtime EEG target; Scope-native control; B200 already passed `320x576` | dynamic Vast rates |
 | 2 | Scope + StreamDiffusion V2 / RewardForcing | Same Scope control surface, useful follow-on A/B backends | similar 24GB tier |
 | 3 | Causal Forcing++ direct backend | Strong 1-step/2-step AR research path; needs custom adapter | unknown |
 | 4 | Krea Realtime 14B | Higher quality, heavier runtime; test after Scope control is proven | `~0.94+` 5090, B200 much higher |
@@ -57,7 +57,7 @@ Definitions:
    - Krea: denoise iteration cadence.
    - MAGI: 24-frame chunk boundaries.
 
-## Build/cache strategy on Prime + R2
+## Build/cache strategy on Vast + R2
 
 Model tuple families:
 
@@ -71,6 +71,7 @@ On pod boot:
 1. restore runtime tuple from R2
 2. warm runtime
 3. start stream server
+4. for Scope/LongLive matrix validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh` so offer retries, teardown, and local artifact pullback are recorded.
 
 ## Public interface contract
 
@@ -96,12 +97,13 @@ Scope-specific controls:
 
 ## Acceptance tests
 
-1. No-cost selftests pass, including fake Scope OSC prompt delivery.
+1. No-cost selftests pass, including fake Scope OSC prompt delivery and the Scope/Vast matrix selftest.
 2. Scope/LongLive cold setup reaches pipeline `loaded`.
-3. Steering latency run (20 EEG-triggered changes) reports acceptable prompt-to-visible-change `p50/p90`.
-4. 30-minute soak has no OOM/restart.
-5. Equal-latency quality A/B confirms selected tier/backend beats baseline.
-6. Backend fallback test (`sage/flash` unavailable) still serves where applicable.
+3. Matrix run proves at least one tier at `>=24 fps`, first frame `<=2s`, synthetic EEG OSC updates, and local MP4 pullback.
+4. Steering latency run (20 EEG-triggered changes) reports acceptable prompt-to-visible-change `p50/p90`.
+5. 30-minute soak has no OOM/restart.
+6. Equal-latency quality A/B confirms selected tier/backend beats baseline.
+7. Backend fallback test (`sage/flash` unavailable) still serves where applicable.
 
 ## Assumptions
 

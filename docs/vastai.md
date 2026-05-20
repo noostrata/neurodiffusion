@@ -187,9 +187,31 @@ Default smoke profile:
 
 Use this wrapper for quick bring-up before attempting realtime streaming or EEG-driven prompt schedules.
 
+## Scope/LongLive realtime matrix path
+
+Use this when the goal is to keep running across GPU tiers and resolutions:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_scope_longlive_vast_matrix.sh \
+  --create-instance \
+  --max-budget-usd 20.14 \
+  --max-attempts 10 \
+  --duration-s 30
+```
+
+The matrix runner:
+
+1. requires `--create-instance` before creating paid compute;
+2. re-scans Vast before each paid attempt;
+3. tries cheap-mid GPUs, Hopper-class GPUs, B200, and 4090 low-res probes within budget/time bounds;
+4. delegates each paid attempt to the Scope smoke runner, preserving local artifact pullback and teardown;
+5. writes `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}`;
+6. checks final active instance count after paid runs without writing raw host/IP data into tracked docs.
+
 ## Scope/LongLive realtime smoke path
 
-For cheap realtime validation, prefer the Scope wrapper:
+For one cheap realtime validation attempt, use the Scope wrapper:
 
 ```bash
 cd /Users/xenochain/Code/neurodiffusion

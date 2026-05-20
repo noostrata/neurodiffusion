@@ -176,6 +176,26 @@ Cost/performance interpretation:
 2. It is still useful for protocol, artifact-pullback, and visual-quality checks.
 3. The next cost target is `RTX 5090`, `L40S`, or another higher-throughput single-GPU tier when available.
 
+### Vast Scope/LongLive matrix guard (2026-05-20)
+
+Use the matrix runner for the next paid pass:
+
+```bash
+bash VideoDiffusion/run_scope_longlive_vast_matrix.sh \
+  --create-instance \
+  --max-budget-usd 20.14 \
+  --max-attempts 10 \
+  --duration-s 30
+```
+
+Budget controls:
+
+1. `--max-budget-usd` is the run-level ceiling.
+2. `--budget-estimate-s` defaults to `1800`, so an offer must fit a conservative 30-minute planned charge before launch.
+3. `--max-attempt-wall-clock-s` defaults to `2400`; a timed-out smoke receives `SIGTERM`, then the matrix tries to terminate its parsed owned instance id.
+4. Every paid attempt still uses the smoke runner teardown path unless `--keep-instance` is explicitly passed.
+5. Final matrix reports estimate spend from observed wall-clock time times the selected offer hourly rate.
+
 ### Prime managed disk rates in `eu_north` (USD / GB-hour)
 
 | Provider sample | Rate |

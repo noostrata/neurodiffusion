@@ -45,7 +45,8 @@ Restore order for a fast next boot:
 4. start with `SCOPE_AUTO_LOAD=0`;
 5. load LongLive explicitly with `SCOPE_VACE_ENABLED=false`.
 
-For paid validation, `VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance` automates that sequence plus offer selection, WebRTC capture, synthetic EEG control, local artifact pullback, `run_report.json`, and teardown.
+For a single paid validation, `VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance` automates that sequence plus offer selection, WebRTC capture, synthetic EEG control, local artifact pullback, `run_report.json`, and teardown.
+For the next systematic paid validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh --create-instance`; it wraps the smoke path with fresh offer retries, GPU tier sequencing, resolution probes, budget/time guards, and aggregate reports.
 
 Prebuild boundary:
 
@@ -59,11 +60,12 @@ Current publish controls:
 2. `VideoDiffusion/publish_r2_prebuild_model.sh` supports `--env-compression gzip|zstd|none` and `--weights-compression gzip|zstd|none`.
 3. For Scope/LongLive, use gzip or zstd for the env archive and `--weights-compression none` for fastest large model-cache publish when R2 storage cost is less important than startup iteration time.
 
-Next paid validation should optimize for low hourly burn:
+Next paid validation should optimize for low hourly burn but still include the known-good fallback:
 
 1. `RTX 5090 32GB` if available and reliable;
 2. `L40S` / `RTX 6000 Ada` for more memory headroom;
-3. H100/H200/B200 only when cheaper cards fail the realtime acceptance gate.
+3. H100/H200/GH200 if cheap-mid cards fail the realtime acceptance gate;
+4. B200 as the known-good fallback and the tier to test `368x640` / `480x832` if budget remains.
 
 Latest cheap-GPU result:
 

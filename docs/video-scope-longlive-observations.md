@@ -11,6 +11,53 @@ Keep this file synchronized with:
 4. `docs/budget-analysis.md` for pricing and spend assumptions;
 5. `AGENTS.md` for canonical repo operating rules.
 
+## 2026-05-20 autonomous matrix plumbing
+
+Status: local plumbing complete; no paid matrix run launched in this pass.
+
+Added systematic entry point:
+
+```bash
+bash VideoDiffusion/run_scope_longlive_vast_matrix.sh \
+  --create-instance \
+  --max-budget-usd 20.14 \
+  --max-attempts 10 \
+  --duration-s 30
+```
+
+No-paid readiness command:
+
+```bash
+bash VideoDiffusion/run_scope_longlive_vast_matrix.sh \
+  --offline-plan \
+  --plan-only \
+  --max-budget-usd 20.14
+```
+
+Matrix contract:
+
+1. No paid compute is created unless `--create-instance` is passed.
+2. Each paid attempt gets a fresh offer scan and selected offer, so stale `no_such_ask` results become one recorded matrix row rather than the end of the experiment.
+3. Each attempt delegates remote lifecycle, R2 restore, WebRTC capture, synthetic EEG, local pullback, and teardown to `VideoDiffusion/run_scope_longlive_vast_smoke.sh`.
+4. Results aggregate into `matrix_report.json`, `matrix_report.csv`, and `matrix_report.md`.
+5. The smoke runner now traps `INT` and `TERM` as well as normal exit, so timeout cancellation still runs cleanup.
+
+Default search order:
+
+| Tier | GPU regex | Max rate | Resolution policy |
+| --- | --- | ---: | --- |
+| `cheap_mid` | `RTX.?5090\|L40S\|RTX.?6000\|A6000` | `$2.50/h` | target then up/down |
+| `hopper` | `H100\|H200\|GH200` | `$8.00/h` | target then up/down |
+| `b200_known_good` | `B200` | `$8.00/h` | target then up/down |
+| `rtx4090_lowres` | `RTX.?4090` | `$1.50/h` | low-res only |
+
+Resolution policy:
+
+1. target: `320x576`, the profile already proven realtime on B200;
+2. upscale if target passes: `368x640`, then `480x832`;
+3. downscale if target fails: `256x448`, then `192x320`;
+4. `480x832` is the next native-scale LongLive target to prove, not an already validated realtime result.
+
 ## 2026-05-20 cheap-GPU automation prep
 
 Status: local runner implemented; first cheap-GPU validation recorded below.

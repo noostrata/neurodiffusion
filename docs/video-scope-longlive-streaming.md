@@ -274,9 +274,45 @@ For first cheap follow-up Scope/LongLive validation, prefer `RTX 4090 24GB`, `RT
 Do not create an instance unless the user explicitly authorizes a paid run.
 The default Scope offer query requires `cuda_max_good>=12.8` because the current tuple is CUDA `12.8`.
 
+## Systematic Vast matrix
+
+Preferred next paid validation entry point:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_scope_longlive_vast_matrix.sh \
+  --create-instance \
+  --max-budget-usd 20.14 \
+  --max-attempts 10 \
+  --duration-s 30
+```
+
+No-paid planning and parser check:
+
+```bash
+bash VideoDiffusion/run_scope_longlive_vast_matrix.sh \
+  --offline-plan \
+  --plan-only \
+  --max-budget-usd 20.14
+```
+
+Default matrix behavior:
+
+1. Safe default is no paid compute; `--create-instance` is required for paid attempts.
+2. Each paid attempt re-queries/selects a fresh Vast offer, then delegates to `VideoDiffusion/run_scope_longlive_vast_smoke.sh`.
+3. Tier order is `cheap_mid` (`RTX 5090`, `L40S`, `RTX 6000`, `A6000`), `hopper` (`H100`, `H200`, `GH200`), `b200_known_good`, then `rtx4090_lowres`.
+4. Full tiers test `320x576`; if that passes, they test `368x640` and `480x832`; if it fails, they test `256x448` and `192x320`.
+5. The 4090 tier skips the known-failed `320x576` target and only tests lower-resolution operating points.
+6. Tier rate ceilings are `$2.50/h` for cheap-mid, `$8.00/h` for Hopper, `$8.00/h` for B200, and `$1.50/h` for 4090 low-res.
+7. Default budget guard is conservative: `--budget-estimate-s 1800` per planned paid attempt, `--max-attempt-wall-clock-s 2400`, and `--max-wall-clock-s 14400`.
+8. Output is written under `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` plus per-attempt MP4/frame/log artifacts.
+9. The matrix does not keep instances by default; use `--keep-instance` only for intentional interactive debugging.
+
+Use this runner when the goal is to keep going across GPUs/resolutions instead of stopping after one failed offer.
+
 ## One-command Vast smoke
 
-Preferred paid validation entry point:
+Single-attempt paid validation entry point:
 
 ```bash
 cd /Users/xenochain/Code/neurodiffusion

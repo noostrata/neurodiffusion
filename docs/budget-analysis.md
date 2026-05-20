@@ -254,6 +254,45 @@ Cost interpretation:
 3. Future comparable one-GPU sweeps should be cheaper if a one-GPU H100/H200/GH200 listing is available.
 4. Vast credit after teardown was about `$9.63`.
 
+### Planned Vast LongLive2 SP cost controls (2026-05-20)
+
+LongLive2 SP is the planned one-stream two-GPU path.
+It should be costed differently from Scope because the first useful test may include source builds, extension builds, model downloads, and R2 tuple publish.
+
+Known anchor:
+
+| Listing | Observed advertised rate | Notes |
+| --- | ---: | --- |
+| `H200 x2` | `$7.74/h` | selected accidentally during the Scope edge sweep; useful as a conservative two-GPU cost anchor |
+
+Quick cost table for the observed `H200 x2` rate:
+
+| Alive window | Compute estimate |
+| ---: | ---: |
+| `10 min` | `$1.29` |
+| `20 min` | `$2.58` |
+| `30 min` | `$3.87` |
+| `60 min` | `$7.74` |
+
+LongLive2 first-run budgeting:
+
+1. no-cost dry-runs must produce the exact `torchrun` command and config before launch;
+2. first paid BF16 SP smoke should cap wall-clock around `30 min` unless the build is clearly progressing;
+3. a successful build should publish the tuple to R2 before teardown so future runs pay restore time, not rebuild time;
+4. a failed import/build should tear down immediately unless the fix is obvious and within the remaining budget;
+5. do not keep an instance alive just to preserve a loaded process;
+6. promote two-GPU SP only if one-stream speedup justifies the extra hourly rate.
+
+Two-GPU decision metric:
+
+```text
+cost_per_realtime_frame = hourly_rate / measured_fps
+speedup = fps_sp2 / fps_sp1
+```
+
+Continue the two-card path when `speedup >= 1.3x`.
+Prefer it operationally only when `speedup >= 1.6x` and visual quality is acceptable against the one-GPU Scope baseline.
+
 ### Prime managed disk rates in `eu_north` (USD / GB-hour)
 
 | Provider sample | Rate |

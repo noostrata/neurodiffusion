@@ -1,6 +1,6 @@
 # Acceleration Playbook
 
-_Last updated: 2026-05-15_
+_Last updated: 2026-05-20_
 
 This is the canonical performance strategy for this repository.
 
@@ -13,6 +13,7 @@ Policy decision for this repo:
    - fallback: `sdpa`
 3. Scope/LongLive is the first realtime EEG validation path. B200 has validated the control path; RTX 4090 did not hold realtime at `320x576`.
 4. Vast + Cloudflare R2 is the current provider/storage architecture; Prime references below are legacy context unless explicitly revived.
+5. LongLive2 sequence-parallel inference is the experimental one-stream multi-GPU path. Keep it separate from Scope until a two-card run proves real single-stream speedup.
 
 ## Scope / LongLive acceleration policy
 
@@ -102,6 +103,45 @@ Latest same-instance H200 edge sweep:
 5. `368x640` failed at `22.175 fps`.
 6. Best validated realtime point is now `352x576`.
 7. Future Scope/Hopper sweeps should keep `--max-gpu-count 1` unless intentionally testing multi-GPU listings.
+
+## LongLive2 sequence-parallel acceleration policy
+
+LongLive2 is the candidate path for one live stream across two GPUs.
+It should not be routed through the Scope API until a real adapter exists.
+
+Research snapshot:
+
+1. upstream `main` includes `inference_sp.py` and `configs/inference_sp.yaml`;
+2. SP launch is `torchrun --nproc_per_node=<sp_size * dp_size> inference_sp.py --config_path configs/inference_sp.yaml`;
+3. with shipped `model_num_heads=24` and `num_frame_per_block=8`, two-card SP is valid as `sp_size=2`, `dp_size=1`;
+4. BF16 setup uses Python `3.10`, PyTorch `2.8.0`, TorchVision `0.23.0`, CUDA `12.8`, and FlashAttention;
+5. NVFP4 setup uses Python `3.12`, PyTorch `2.10.0+cu128`, FlashAttention `2.8.3` from source, local `fouroversix`, and the FP4 KV-cache dequant extension;
+6. upstream reports `45.7 FPS` for LongLive2-5B in the 2-step NVFP4 setup, but this repo has not validated that result.
+
+Planned tuple families:
+
+| Lane | Runtime tag | First GPU target | Purpose |
+| --- | --- | --- | --- |
+| BF16 SP | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | `H100/H200 x2` | prove one-stream two-rank inference |
+| NVFP4 S2 SM100 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1` | `B200/GB200 x1-2` | maximum speed path |
+| NVFP4 S2 SM120 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` | `RTX 50/60 x1-2` | cheaper Blackwell candidate after SM100 proof |
+
+R2 fast path:
+
+1. cache the env, built extensions, wheelhouse, HF checkpoints, and merged/materialized checkpoints;
+2. do not try to cache a live NCCL process group or GPU-loaded model;
+3. publish only after a minimal render proves the tuple imports and runs;
+4. for first paid builds, publish before teardown if the env is reusable.
+
+Validation order:
+
+1. no-cost config/report selftests;
+2. BF16 two-GPU offline smoke;
+3. one-GPU vs two-GPU speedup comparison;
+4. NVFP4 S2 import/render smoke;
+5. live runner and EEG bridge only after useful distributed speedup is measured.
+
+See `docs/video-longlive2-sp-streaming.md` for the full plan.
 
 ## 1) Why this policy
 

@@ -17,6 +17,7 @@ This repository is operator-first. Scripts and docs should make GPU work determi
 - `docs/video-magi1-observations.md` — empirical MAGI outcomes, failures, fixes, and tuning notes.
 - `docs/video-scope-longlive-streaming.md` — Daydream Scope + LongLive realtime setup, OSC control, WebRTC validation, and Vast runbook.
 - `docs/video-scope-longlive-observations.md` — empirical Scope + LongLive outcomes, fixes, R2 tuple, local artifacts, and tuning notes.
+- `docs/video-longlive2-sp-streaming.md` — LongLive2 one-stream sequence-parallel research, plumbing, R2, Vast, and validation plan.
 - `docs/eeg-openbci-control.md` — OpenBCI/BrainFlow EEG control path.
 - `docs/cloudflare-r2.md` — R2 cache/artifact layout.
 - `docs/accelerate.md` — acceleration/build/cache strategy.
@@ -115,6 +116,20 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - For cross-GPU offer validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh --create-instance`; it retries fresh offers, sweeps GPU tiers and adaptive resolutions, keeps budget/time bounds, writes matrix JSON/CSV/Markdown, and still delegates each paid attempt to the smoke runner for teardown and local artifact pullback.
 - Scope/LongLive paid selection defaults to one-GPU offers. Use `--max-gpu-count 0` only when intentionally allowing multi-GPU listings.
 - Treat telemetry as part of the artifact contract: preserve `run_report.json`, `sweep_report.*`, `matrix_report.*`, `phase_report.json`, `artifact_qa.json`, sampled frames/contact sheets, ffprobe output, invoice/spend notes, and `[scope-vast-ts]` phase markers when available.
+
+## LongLive2 Sequence-Parallel Discipline
+
+- LongLive2 is experimental and separate from Daydream Scope + LongLive.
+- Use it only for the one-stream multi-GPU path where multiple GPUs cooperate on one video generation state.
+- Do not present a two-GPU Scope host as a LongLive2 or sequence-parallel result.
+- Source-of-truth plan: `docs/video-longlive2-sp-streaming.md`.
+- First target is BF16 Ulysses sequence-parallel inference through upstream `inference_sp.py`, not live EEG.
+- First two-card target uses `sp_size=2`, `dp_size=1`, and `torchrun --nproc_per_node=2`.
+- A valid LongLive2 two-card run must show one output stream plus per-GPU telemetry proving both cards were active.
+- R2 may cache the LongLive2 env, built extensions, checkpoints, and generated merged/materialized checkpoints; it cannot preserve a live NCCL process group or GPU-resident model.
+- EEG integration comes after distributed inference is proven: offline prompt schedule first, persistent runner second, live output third.
+- Paid LongLive2 tests must use explicit two-GPU selection and teardown by default.
+- Do not promote LongLive2 as the default realtime path until it beats the one-GPU Scope baseline on speed, cost, and visual acceptability.
 
 ## Local Artifact Rule
 

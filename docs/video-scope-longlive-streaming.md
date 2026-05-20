@@ -4,6 +4,7 @@ _Last updated: 2026-05-15_
 
 This is the operator path for using Daydream Scope with the LongLive realtime video pipeline.
 It is designed for the final OpenBCI EEG control target: Scope owns WebRTC/video, while the EEG process owns OSC control updates.
+For one-stream multi-GPU LongLive2 work, use `docs/video-longlive2-sp-streaming.md`; that path is not a Scope REST pipeline today.
 
 ## Current status
 
@@ -22,6 +23,7 @@ Still not validated:
 1. real OpenBCI hardware input;
 2. cheaper `RTX 5090` / `L40S` Scope throughput;
 3. long-duration gallery/session stability beyond the 90s synthetic EEG run.
+4. LongLive2 sequence-parallel inference; that is a separate direct-backend plan, not a Scope LongLive result.
 
 Latest empirical reference:
 

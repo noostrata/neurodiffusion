@@ -94,6 +94,7 @@ Teardown and spend:
 3. invoice rows for the instance were `$1.774` GPU plus `$0.014` storage, about `$1.79` total;
 4. Vast credit after teardown was about `$9.63`;
 5. the run exposed that the selector needed a maximum GPU count guard; Scope smoke/matrix selection now defaults to `--max-gpu-count 1`.
+6. this is not evidence of two-GPU one-stream inference; the Scope path did not launch distributed LongLive2 or prove utilization on both cards.
 
 Results:
 

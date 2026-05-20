@@ -290,6 +290,42 @@ Acceptance is encoded in `run_report.json`:
 Use `--keep-instance` only for intentional interactive debugging.
 If using the B200-published tuple on cheaper GPUs, the wrapper deliberately passes the runtime mismatch path because Scope tuple reuse is env/cache-oriented rather than MAGI custom-kernel-oriented.
 
+## Planned LongLive2 SP one-stream path
+
+LongLive2 sequence-parallel inference is the planned path for one stream across two GPUs.
+It is not the same as renting a two-GPU host for Scope.
+
+Planned first paid target:
+
+1. two GPUs exactly: `--min-gpu-count 2 --max-gpu-count 2`;
+2. first lane: BF16 SP on `H100/H200 x2` or another reliable Hopper two-GPU host;
+3. launch shape: `torchrun --standalone --nnodes=1 --nproc_per_node=2 inference_sp.py --config_path <generated_config>`;
+4. config shape: `sp_size=2`, `dp_size=1`;
+5. output: one MP4 written by rank 0, not two independent videos.
+
+Planned instance lifecycle:
+
+1. query offers with a LongLive2-specific profile or explicit query override;
+2. prefer datacenter two-GPU listings with good disk/network and, when visible, better GPU topology;
+3. provision only with explicit `--create-instance`;
+4. restore the R2 LongLive2 tuple if available;
+5. otherwise build/download with a strict wall-clock cap;
+6. run one short offline SP smoke;
+7. pull the MP4, logs, generated config, `ffprobe`, sampled frames/contact sheet, per-GPU telemetry, and spend report;
+8. publish the tuple to R2 only if the smoke proves reusable imports/builds;
+9. destroy the instance by default and verify `vastai show instances --raw`.
+
+Acceptance:
+
+1. `torchrun` starts two ranks;
+2. logs show SP mode with `sp_size=2`;
+3. both GPUs show nontrivial utilization during denoising;
+4. the output is one coherent video stream;
+5. local artifact pullback succeeds;
+6. no paid instance remains running.
+
+See `docs/video-longlive2-sp-streaming.md` for the complete plan.
+
 ## Persistence
 
 Cloudflare R2 remains the canonical persistent store.

@@ -15,6 +15,7 @@ This directory is the canonical operational documentation for the repo.
 - `docs/video-krea-streaming.md` — Krea realtime workflow, backend policy, and steering defaults.
 - `docs/video-scope-longlive-streaming.md` — Daydream Scope + LongLive realtime workflow, Scope REST/OSC control, and EEG integration.
 - `docs/video-scope-longlive-observations.md` — empirical Scope + LongLive B200 validation, WebRTC/EEG results, R2 tuple, and local artifact pointers.
+- `docs/video-longlive2-sp-streaming.md` — experimental LongLive2 one-stream sequence-parallel plan for two-card inference, R2 tuples, Vast tests, and EEG integration staging.
 - `docs/video-realtime-steering.md` — cross-model realtime steering policy, GPU ranking, and acceptance gates.
 - `docs/eeg-openbci-control.md` — no-pay OpenBCI/BrainFlow EEG-to-video prompt-control workflow.
 - `docs/video-magi1-scaling-testing.md` — testing matrix, first-principles cluster sizing, and cost-bounded scaling for prompt-reactive MAGI runs.
@@ -27,6 +28,7 @@ This directory is the canonical operational documentation for the repo.
 - latest cheap Scope/LongLive snapshot: `RTX 4090 x1` generated coherent output but failed realtime at `11.310 fps`; local output is `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4`.
 - latest Scope/LongLive sweep plumbing: `VideoDiffusion/run_scope_longlive_vast_sweep.sh` runs multiple resolutions on one Vast instance after one restore/server start; use it for edge-finding on a chosen GPU.
 - latest Scope/LongLive matrix plumbing: `VideoDiffusion/run_scope_longlive_vast_matrix.sh` plans or runs a bounded cross-GPU Vast sweep around the smoke runner; use it for offer/tier selection instead of trying one offer by hand.
+- latest LongLive2 SP status: researched/planned only; use `docs/video-longlive2-sp-streaming.md` before adding code or launching a two-GPU one-stream test.
 - latest scripted stream validation snapshot: `A100 80GB x1` tuned run confirmed chunk-boundary cue application (`18/18`) but not near-real-time (`steady p90 TPOC ~6.2s`); details in `docs/video-magi1-observations.md`.
 - latest one-shot quality validation snapshot: `A100 80GB x1` low-cost profile produced full `30.0s` / `720` frame output (`/Users/xenochain/Downloads/magi_try.mp4`); details in `docs/video-magi1-observations.md`.
 - `scripts/vast/*.sh|*.py` — current Vast GPU offer discovery, selection, instance lifecycle, SSH resolution, and teardown automation.
@@ -41,6 +43,7 @@ This directory is the canonical operational documentation for the repo.
 - `VideoDiffusion/run_scope_longlive_vast_sweep.sh` — same-instance Scope/LongLive resolution sweep: one provision/restore/server start, multiple LongLive loads/benchmarks, per-resolution reports, and aggregate `sweep_report`.
 - `VideoDiffusion/run_scope_longlive_vast_matrix.sh` — systematic Scope/LongLive Vast validation: fresh offer selection per attempt, default GPU tier ladder without 4090, `320x576` target plus lower/edge/upper resolution probes through `480x832`, budget/time/credit guards, aggregate JSON/CSV/Markdown report, and smoke-runner teardown.
 - `VideoDiffusion/scope_run_report.py` — local run/sweep report builder with phase telemetry parsing, ffprobe metadata, nonblank luma QA, and contact-sheet generation.
+- planned LongLive2 SP scripts — `VideoDiffusion/setup_longlive2.sh`, `download_longlive2_models.sh`, `run_longlive2_sp_offline.sh`, `run_longlive2_sp_vast_smoke.sh`, and `longlive2_run_report.py` are planned in `docs/video-longlive2-sp-streaming.md` but not yet implemented.
 - `VideoDiffusion/eeg_control/` + `VideoDiffusion/requirements-eeg.txt` — local EEG feature extraction, fake MAGI/Scope control servers, calibration, and prompt controller.
 - `docs/security.md` — secret handling and ignored file patterns.
 - `docs/references.md` — upstream docs and source links.

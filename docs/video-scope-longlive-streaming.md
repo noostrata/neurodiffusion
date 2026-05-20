@@ -270,13 +270,41 @@ python3 scripts/vast/select_video_offer.py \
   --print-env
 ```
 
-For first cheap follow-up Scope/LongLive validation, prefer `RTX 4090 24GB`, `RTX 5090 32GB`, or `L40S 48GB`-class offers before H100/H200/B200.
+For follow-up Scope/LongLive realtime validation, prefer `RTX 5090 32GB`, `L40S 48GB`, H100/H200, or B200-class offers.
+`RTX 4090 24GB` is now an explicit protocol/quality-check tier only, because it failed realtime at both `320x576` and `256x448`.
 Do not create an instance unless the user explicitly authorizes a paid run.
 The default Scope offer query requires `cuda_max_good>=12.8` because the current tuple is CUDA `12.8`.
 
+## Same-instance Vast sweep
+
+Preferred edge-finding entry point after choosing a GPU tier:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_scope_longlive_vast_sweep.sh \
+  --create-instance \
+  --gpu-regex 'H100|H200|GH200' \
+  --max-dph 8.00 \
+  --duration-s 30 \
+  --resolutions 320x576,336x592,352x576,368x640
+```
+
+The sweep runner is the cost/time optimization path:
+
+1. creates one paid instance;
+2. restores the Scope tuple once;
+3. starts one Scope server;
+4. reloads LongLive at each requested resolution;
+5. runs WebRTC capture and synthetic EEG for every resolution;
+6. pulls all artifacts locally before teardown;
+7. writes per-resolution `run_report.json`, `artifact_qa.json`, and `contact_sheet.jpg`;
+8. writes aggregate `sweep_report.json` and `sweep_report.md`.
+
+Use this when the question is the maximum realtime resolution on one selected GPU.
+
 ## Systematic Vast matrix
 
-Preferred next paid validation entry point:
+Preferred cross-GPU paid validation entry point:
 
 ```bash
 cd /Users/xenochain/Code/neurodiffusion
@@ -300,15 +328,17 @@ Default matrix behavior:
 
 1. Safe default is no paid compute; `--create-instance` is required for paid attempts.
 2. Each paid attempt re-queries/selects a fresh Vast offer, then delegates to `VideoDiffusion/run_scope_longlive_vast_smoke.sh`.
-3. Tier order is `cheap_mid` (`RTX 5090`, `L40S`, `RTX 6000`, `A6000`), `hopper` (`H100`, `H200`, `GH200`), `b200_known_good`, then `rtx4090_lowres`.
-4. Full tiers test `320x576`; if that passes, they test `368x640` and `480x832`; if it fails, they test `256x448` and `192x320`.
-5. The 4090 tier skips the known-failed `320x576` target and only tests lower-resolution operating points.
+3. Default tier order is `cheap_mid` (`RTX 5090`, `L40S`, `RTX 6000`, `A6000`), `hopper` (`H100`, `H200`, `GH200`), then `b200_known_good`.
+4. `rtx4090_lowres` remains available only when passed explicitly with `--tiers rtx4090_lowres`.
+5. Full tiers test `320x576`; if that passes, they test edge/upscale probes `336x592`, `352x576`, `368x640`, then `480x832`; if it fails, they test `256x448` and `192x320`.
 6. Tier rate ceilings are `$2.50/h` for cheap-mid, `$8.00/h` for Hopper, `$8.00/h` for B200, and `$1.50/h` for 4090 low-res.
 7. Default budget guard is conservative: `--budget-estimate-s 1800` per planned paid attempt, `--max-attempt-wall-clock-s 2400`, and `--max-wall-clock-s 14400`.
 8. `--per-attempt-fixed-cost-usd` defaults to `1.00` so the budget guard accounts for transfer/storage overhead in addition to GPU time.
-9. Output is written under `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` plus per-attempt MP4/frame/log artifacts.
-10. The matrix does not keep instances by default; use `--keep-instance` only for intentional interactive debugging.
-11. Smoke logs include `[scope-vast-ts]` UTC phase markers for setup/restore/load/capture/pullback telemetry.
+9. `--min-credit-reserve-usd` can keep a Vast credit reserve before paid creates; add `--require-credit-check` when the run must stop if credit cannot be queried.
+10. By default, the matrix stops larger upscale probes after the first failed upscale; add `--continue-after-upscale-fail` for exhaustive probing.
+11. Output is written under `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` plus `invoice_report.json` and per-attempt MP4/frame/log artifacts.
+12. The matrix does not keep instances by default; use `--keep-instance` only for intentional interactive debugging.
+13. Smoke reports include `phase_report.json`, `artifact_qa.json`, contact sheets, and `[scope-vast-ts]` UTC phase markers for setup/restore/load/capture/pullback telemetry.
 
 Use this runner when the goal is to keep going across GPUs/resolutions instead of stopping after one failed offer.
 
@@ -320,8 +350,8 @@ Single-attempt paid validation entry point:
 cd /Users/xenochain/Code/neurodiffusion
 bash VideoDiffusion/run_scope_longlive_vast_smoke.sh \
   --create-instance \
-  --gpu-regex 'RTX.?4090|RTX.?5090|L40S' \
-  --max-dph 1.50 \
+  --gpu-regex 'H100|H200|GH200' \
+  --max-dph 8.00 \
   --duration-s 30
 ```
 
@@ -342,7 +372,7 @@ Safe behavior:
 1. Without `--create-instance`, the script requires `VAST_INSTANCE_ID` and will not create paid compute.
 2. With `--create-instance`, it queries/selects an offer, provisions a Vast SSH instance, and destroys that instance on exit unless `--keep-instance` is passed.
 3. The R2 secret is copied to the instance only for tuple restore and removed during cleanup.
-4. Output video, sampled frames, logs, and `run_report.json` are pulled under `/Users/xenochain/Downloads/<run_id>/`.
+4. Output video, sampled frames, logs, `run_report.json`, `phase_report.json`, `artifact_qa.json`, and `contact_sheet.jpg` are pulled/written under `/Users/xenochain/Downloads/<run_id>/`.
 5. A flat video copy is also written to `/Users/xenochain/Downloads/<run_id>_webrtc_capture.mp4`.
 
 Acceptance gate:
@@ -362,7 +392,7 @@ If a cheaper card fails restore/runtime, rerun with `--download-fallback` to reb
 1. Query Scope offers and choose a cost target.
 2. Provision one Vast instance with port `8000` exposed.
 3. Sync the repo to the instance.
-4. Prefer `bash VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance` for the full automated path.
+4. Prefer `bash VideoDiffusion/run_scope_longlive_vast_sweep.sh --create-instance` for same-GPU resolution testing, or `bash VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance` for one validation point.
 5. If running manually, run `SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh` and restore the R2 tuple with `--apply-weights-target VideoDiffusion/.cache/daydream-scope`, or run full `VIDEO_MODEL=scope bash VideoDiffusion/setup_video_runtime.sh` when rebuilding from scratch.
 6. Run `bash VideoDiffusion/download_scope_models.sh` only if the R2 model cache was not restored or intentionally needs refresh.
 7. Start `SCOPE_AUTO_LOAD=0 VIDEO_MODEL=scope bash VideoDiffusion/run_video_stream.sh`.
@@ -406,6 +436,7 @@ Observed on 2026-05-20:
 4. `RTX 4090` failed `256x448`: `333` frames, `12.912 fps`, first frame `4.693s`.
 5. All runs pulled local videos and sampled coherent frames.
 6. Final active Vast instances: `[]`.
+7. H200 throughput was about `4.8-4.9 MPix/s`, so current `24 fps` probes should target `<=200k px/frame` before display upscaling.
 
 ## Sources
 

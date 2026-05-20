@@ -49,7 +49,7 @@ This repository is operator-first. Scripts and docs should make GPU work determi
 - Checking credits, user info, offers, and active instances is no-spend and allowed when relevant.
 - Creating an instance is paid work. Do not create one unless the user gives explicit approval or an explicit budget/run request.
 - Prefer a one-GPU A100 80GB smoke target for first MAGI proof-of-life unless the user asks for realtime/Hopper testing.
-- Prefer cheap `RTX 4090`, `RTX 5090`, or `L40S`-class offers for first Scope/LongLive realtime validation before H100/H200.
+- Prefer `RTX 5090`, `L40S`, H100/H200, or B200-class offers for Scope/LongLive realtime validation. `RTX 4090` is no longer a default realtime tier for this profile.
 - Use `scripts/vast/query_video_offers.py` and `scripts/vast/select_video_offer.py` for deterministic offer selection.
 - Pass the intended R2 runtime tag to `scripts/vast/select_video_offer.py`; `smXX` tags filter to matching GPU families.
 - Current tuple `hopper_sm80_py310_torch240_cu124_20260217_prebuild1` is A100-class only despite the historical `hopper_` prefix. Do not use it on H100/H200 unless intentionally debugging a mismatch.
@@ -88,12 +88,16 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
   - `VideoDiffusion/load_scope_longlive.sh`
   - `VideoDiffusion/scope_webrtc_benchmark.py`
   - `VideoDiffusion/run_scope_longlive_vast_smoke.sh`
+  - `VideoDiffusion/run_scope_longlive_vast_sweep.sh`
   - `VideoDiffusion/run_scope_longlive_vast_matrix.sh`
+  - `VideoDiffusion/scope_run_report.py`
 - Latest validated Scope tuple: `scope_auto_py312_torch2.9.1_cu128_sm100` for B200 / SM100.
 - Latest realtime Scope result: `B200 x1` held the current `320x576` target at `>=24 fps` with synthetic EEG steering.
 - Latest H200 matrix result: `H200 x1` passed `320x576` (`25.376 fps`) but failed `368x640` (`20.835 fps`) and `480x832` (`12.171 fps`).
+- Current H200 throughput model is about `4.8-4.9 MPix/s`; a `24 fps` realtime target should stay near or below `200k px/frame` unless a faster GPU/runtime path is proven.
 - Latest cheap Scope result: `RTX 4090 x1` generates valid output but is not realtime at `320x576` (`11.310 fps`).
 - Latest low-res 4090 result: `RTX 4090 x1` failed realtime at `256x448` (`12.912 fps`, first frame `4.693s`).
+- Do not include `RTX 4090` in default paid realtime sweeps. Use `--tiers rtx4090_lowres` only for explicit protocol or quality checks.
 - LongLive native/paper-scale target for the next max-resolution pass is `480x832` (`832x480` display orientation); the repo has only proven realtime at `320x576` so far.
 - R2 prebuild can restore the Scope uv env and LongLive/Wan model cache; it cannot preserve a live loaded GPU model.
 - For a fast fresh boot: clone repo, run `SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh`, restore the Scope tuple, start with `SCOPE_AUTO_LOAD=0`, then load LongLive with `SCOPE_VACE_ENABLED=false`.
@@ -105,9 +109,10 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - Use `VideoDiffusion/eeg_control/fake_scope_server.py` and `python3 VideoDiffusion/eeg_control/selftest.py` before any paid Scope run.
 - Do not attempt to embed WebRTC inside the EEG loop. Let Scope UI or a browser/WebRTC client own video display; the EEG loop owns control.
 - For headless GPU validation, use `VideoDiffusion/scope_webrtc_benchmark.py` and synthetic EEG concurrently, then pull the recorded MP4 and sampled frames before teardown.
-- For paid cheap-GPU validation, prefer `VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance`; it queries/selects, provisions, restores, captures, pulls artifacts, writes `run_report.json`, and tears down by default.
-- For systematic realtime validation, prefer `VideoDiffusion/run_scope_longlive_vast_matrix.sh --create-instance`; it retries fresh offers, sweeps GPU tiers and resolutions, keeps budget/time bounds, writes matrix JSON/CSV/Markdown, and still delegates each paid attempt to the smoke runner for teardown and local artifact pullback.
-- Treat telemetry as part of the artifact contract: preserve `run_report.json`, `matrix_report.*`, sampled frames, ffprobe output, invoice/spend notes, and `[scope-vast-ts]` phase markers when available.
+- For one paid validation, use `VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance`; it queries/selects, provisions, restores, captures, pulls artifacts, writes `run_report.json`, and tears down by default.
+- For same-GPU resolution edge finding, prefer `VideoDiffusion/run_scope_longlive_vast_sweep.sh --create-instance`; it creates one instance, restores once, starts Scope once, then writes per-resolution `run_report.json` files plus `sweep_report.json`.
+- For cross-GPU offer validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh --create-instance`; it retries fresh offers, sweeps GPU tiers and adaptive resolutions, keeps budget/time bounds, writes matrix JSON/CSV/Markdown, and still delegates each paid attempt to the smoke runner for teardown and local artifact pullback.
+- Treat telemetry as part of the artifact contract: preserve `run_report.json`, `sweep_report.*`, `matrix_report.*`, `phase_report.json`, `artifact_qa.json`, sampled frames/contact sheets, ffprobe output, invoice/spend notes, and `[scope-vast-ts]` phase markers when available.
 
 ## Local Artifact Rule
 

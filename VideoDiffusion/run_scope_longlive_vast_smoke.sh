@@ -15,6 +15,8 @@ R2_PREFIX="${R2_PREFIX:-neurodiffusion}"
 LOCAL_OUT_DIR="${SCOPE_VAST_LOCAL_OUT_DIR:-${HOME}/Downloads/${RUN_ID}}"
 FLAT_LOCAL_VIDEO="${SCOPE_VAST_FLAT_LOCAL_VIDEO:-${HOME}/Downloads/${RUN_ID}_webrtc_capture.mp4}"
 FLAT_LOCAL_FRAME="${SCOPE_VAST_FLAT_LOCAL_FRAME:-${HOME}/Downloads/${RUN_ID}_frame_000024.png}"
+PHASE_LOG="${SCOPE_VAST_PHASE_LOG:-${LOCAL_OUT_DIR}/phase_markers.log}"
+SWEEP_RESOLUTIONS="${SCOPE_VAST_SWEEP_RESOLUTIONS:-}"
 
 CREATE_INSTANCE="${SCOPE_VAST_CREATE_INSTANCE:-0}"
 KEEP_INSTANCE="${SCOPE_VAST_KEEP_INSTANCE:-0}"
@@ -64,6 +66,7 @@ Options:
   --duration-s <seconds>        WebRTC benchmark duration (default: ${BENCHMARK_DURATION_S})
   --height <pixels>             LongLive output height, divisible by 16 (default: ${SCOPE_HEIGHT})
   --width <pixels>              LongLive output width, divisible by 16 (default: ${SCOPE_WIDTH})
+  --resolutions <HxW,...>       Same-instance resolution sweep; creates per-resolution reports
   --local-out-dir <path>        Local artifact directory (default: ${LOCAL_OUT_DIR})
   --no-restore                  Skip R2 tuple restore and run setup/download path
   --download-fallback           If restore fails, download LongLive models from HF
@@ -123,6 +126,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --local-out-dir)
       LOCAL_OUT_DIR="$2"
+      PHASE_LOG="${SCOPE_VAST_PHASE_LOG:-$2/phase_markers.log}"
+      shift 2
+      ;;
+    --resolutions)
+      SWEEP_RESOLUTIONS="$2"
       shift 2
       ;;
     --no-restore)
@@ -159,7 +167,63 @@ q() {
 
 mark_phase() {
   local phase="$1"
-  printf '[scope-vast-ts] %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${phase}"
+  local line
+  line="$(printf '[scope-vast-ts] %s %s' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${phase}")"
+  printf '%s\n' "${line}"
+  mkdir -p "$(dirname -- "${PHASE_LOG}")"
+  printf '%s\n' "${line}" >>"${PHASE_LOG}"
+}
+
+validate_resolution() {
+  local raw="$1"
+  if [[ ! "${raw}" =~ ^[0-9]+x[0-9]+$ ]]; then
+    echo "[error] invalid resolution '${raw}', expected HxW" >&2
+    exit 1
+  fi
+  local height="${raw%x*}"
+  local width="${raw#*x}"
+  if (( height <= 0 || width <= 0 || height % 16 != 0 || width % 16 != 0 )); then
+    echo "[error] invalid resolution '${raw}', dimensions must be positive and divisible by 16" >&2
+    exit 1
+  fi
+}
+
+sweep_resolution_list() {
+  if [[ -n "${SWEEP_RESOLUTIONS}" ]]; then
+    local -a raw
+    IFS=',' read -r -a raw <<<"${SWEEP_RESOLUTIONS}"
+    for item in "${raw[@]}"; do
+      item="${item//[[:space:]]/}"
+      [[ -z "${item}" ]] && continue
+      validate_resolution "${item}"
+      printf '%s\n' "${item}"
+    done
+  else
+    validate_resolution "${SCOPE_HEIGHT}x${SCOPE_WIDTH}"
+    printf '%sx%s\n' "${SCOPE_HEIGHT}" "${SCOPE_WIDTH}"
+  fi
+}
+
+is_sweep_mode() {
+  [[ -n "${SWEEP_RESOLUTIONS}" ]]
+}
+
+flat_video_for_label() {
+  local label="$1"
+  if is_sweep_mode; then
+    printf '%s/%s_%s_webrtc_capture.mp4\n' "${HOME}/Downloads" "${RUN_ID}" "${label}"
+  else
+    printf '%s\n' "${FLAT_LOCAL_VIDEO}"
+  fi
+}
+
+flat_frame_for_label() {
+  local label="$1"
+  if is_sweep_mode; then
+    printf '%s/%s_%s_frame_000024.png\n' "${HOME}/Downloads" "${RUN_ID}" "${label}"
+  else
+    printf '%s\n' "${FLAT_LOCAL_FRAME}"
+  fi
 }
 
 remote_ssh() {
@@ -189,7 +253,7 @@ cleanup_remote_secret() {
 
 cleanup_remote_processes() {
   if [[ -n "${VAST_SSH_HOST:-}" ]]; then
-    remote_ssh "set +e; for f in $(q "${REMOTE_RUN_DIR}")/*.pid; do [[ -f \"\$f\" ]] && kill \"\$(cat \"\$f\")\" 2>/dev/null || true; done" >/dev/null 2>&1 || true
+    remote_ssh "set +e; find $(q "${REMOTE_RUN_DIR}") -type f -name '*.pid' 2>/dev/null | while IFS= read -r f; do [[ -f \"\$f\" ]] && kill \"\$(cat \"\$f\")\" 2>/dev/null || true; done" >/dev/null 2>&1 || true
   fi
 }
 
@@ -403,17 +467,19 @@ wait_for_scope_server() {
 }
 
 load_longlive() {
+  local log_path="${1:-${REMOTE_RUN_DIR}/load_longlive.log}"
   echo "[scope-vast] loading LongLive"
-  remote_ssh "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); SCOPE_PORT=$(q "${SCOPE_PORT}") SCOPE_HEIGHT=$(q "${SCOPE_HEIGHT}") SCOPE_WIDTH=$(q "${SCOPE_WIDTH}") SCOPE_VACE_ENABLED=$(q "${SCOPE_VACE_ENABLED}") SCOPE_WAIT_TIMEOUT_S=$(q "${SCOPE_WAIT_TIMEOUT_S}") bash VideoDiffusion/load_scope_longlive.sh 2>&1 | tee $(q "${REMOTE_RUN_DIR}/load_longlive.log")"
+  remote_ssh "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); SCOPE_PORT=$(q "${SCOPE_PORT}") SCOPE_HEIGHT=$(q "${SCOPE_HEIGHT}") SCOPE_WIDTH=$(q "${SCOPE_WIDTH}") SCOPE_VACE_ENABLED=$(q "${SCOPE_VACE_ENABLED}") SCOPE_WAIT_TIMEOUT_S=$(q "${SCOPE_WAIT_TIMEOUT_S}") bash VideoDiffusion/load_scope_longlive.sh 2>&1 | tee $(q "${log_path}")"
 }
 
 run_webrtc_and_eeg() {
+  local active_remote_dir="${1:-${REMOTE_RUN_DIR}}"
   echo "[scope-vast] running WebRTC capture and synthetic EEG"
   local scope_py="${REMOTE_VIDEO_DIR}/.vendors/daydream-scope/.venv/bin/python"
-  local remote_video="${REMOTE_RUN_DIR}/webrtc_capture.mp4"
-  local remote_benchmark_json="${REMOTE_RUN_DIR}/webrtc_benchmark.json"
-  local remote_frames="${REMOTE_RUN_DIR}/frames"
-  local remote_eeg_jsonl="${REMOTE_RUN_DIR}/synthetic_eeg.jsonl"
+  local remote_video="${active_remote_dir}/webrtc_capture.mp4"
+  local remote_benchmark_json="${active_remote_dir}/webrtc_benchmark.json"
+  local remote_frames="${active_remote_dir}/frames"
+  local remote_eeg_jsonl="${active_remote_dir}/synthetic_eeg.jsonl"
   remote_ssh "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); mkdir -p $(q "${remote_frames}");
 set +e
 $(q "${scope_py}") VideoDiffusion/scope_webrtc_benchmark.py \
@@ -423,12 +489,12 @@ $(q "${scope_py}") VideoDiffusion/scope_webrtc_benchmark.py \
   --prompt $(q "${PROMPT}") \
   --output-json $(q "${remote_benchmark_json}") \
   --output-video $(q "${remote_video}") \
-  --frames-dir $(q "${remote_frames}") \
-  --save-every-n-frames 24 \
-  --max-saved-frames 16 \
-  > $(q "${REMOTE_RUN_DIR}/webrtc_benchmark.stdout.log") 2> $(q "${REMOTE_RUN_DIR}/webrtc_benchmark.stderr.log") &
+	  --frames-dir $(q "${remote_frames}") \
+	  --save-every-n-frames 24 \
+	  --max-saved-frames 16 \
+	  > $(q "${active_remote_dir}/webrtc_benchmark.stdout.log") 2> $(q "${active_remote_dir}/webrtc_benchmark.stderr.log") &
 bench_pid=\$!
-echo \${bench_pid} > $(q "${REMOTE_RUN_DIR}/webrtc_benchmark.pid")
+echo \${bench_pid} > $(q "${active_remote_dir}/webrtc_benchmark.pid")
 sleep 2
 $(q "${scope_py}") VideoDiffusion/eeg_control/run_neurofeedback_session.py \
   --board mock \
@@ -439,151 +505,75 @@ $(q "${scope_py}") VideoDiffusion/eeg_control/run_neurofeedback_session.py \
   --sink jsonl \
   --scope-osc-host 127.0.0.1 \
   --scope-osc-port $(q "${SCOPE_PORT}") \
-  --scope-transition-steps 6 \
-  --duration-s $(q "${EEG_DURATION_S}") \
-  --log-jsonl $(q "${remote_eeg_jsonl}") \
-  > $(q "${REMOTE_RUN_DIR}/synthetic_eeg.stdout.log") 2> $(q "${REMOTE_RUN_DIR}/synthetic_eeg.stderr.log")
+	  --scope-transition-steps 6 \
+	  --duration-s $(q "${EEG_DURATION_S}") \
+	  --log-jsonl $(q "${remote_eeg_jsonl}") \
+	  > $(q "${active_remote_dir}/synthetic_eeg.stdout.log") 2> $(q "${active_remote_dir}/synthetic_eeg.stderr.log")
 eeg_rc=\$?
 wait \${bench_pid}
 bench_rc=\$?
-echo \${eeg_rc} > $(q "${REMOTE_RUN_DIR}/synthetic_eeg.rc")
-echo \${bench_rc} > $(q "${REMOTE_RUN_DIR}/webrtc_benchmark.rc")
+echo \${eeg_rc} > $(q "${active_remote_dir}/synthetic_eeg.rc")
+echo \${bench_rc} > $(q "${active_remote_dir}/webrtc_benchmark.rc")
 exit 0"
 }
 
 write_local_report() {
-  local report_path="${LOCAL_OUT_DIR}/run_report.json"
-  python3 - "${report_path}" "${RUN_ID}" "${VAST_INSTANCE_ID:-}" "${RUNTIME_TAG}" "${LOCAL_OUT_DIR}" "${MIN_FPS}" "${MAX_FIRST_FRAME_LATENCY_S}" "${FLAT_LOCAL_VIDEO}" "${SCOPE_HEIGHT}" "${SCOPE_WIDTH}" <<'PY'
-import json
-import subprocess
-import sys
-from pathlib import Path
-
-report_path = Path(sys.argv[1])
-run_id, instance_id, runtime_tag = sys.argv[2:5]
-local_dir = Path(sys.argv[5])
-min_fps = float(sys.argv[6])
-max_first = float(sys.argv[7])
-flat_video = Path(sys.argv[8])
-height = int(float(sys.argv[9]))
-width = int(float(sys.argv[10]))
-
-benchmark_path = local_dir / "webrtc_benchmark.json"
-eeg_path = local_dir / "synthetic_eeg.jsonl"
-benchmark_rc_path = local_dir / "webrtc_benchmark.rc"
-eeg_rc_path = local_dir / "synthetic_eeg.rc"
-benchmark = {}
-if benchmark_path.is_file():
-    benchmark = json.loads(benchmark_path.read_text(encoding="utf-8"))
-
-eeg_records = []
-if eeg_path.is_file():
-    for line in eeg_path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            try:
-                eeg_records.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-emit_count = sum(1 for row in eeg_records if row.get("emit"))
-scope_emit_count = sum(1 for row in eeg_records if row.get("scope_osc_sent"))
-
-def read_rc(path: Path):
-    if not path.is_file():
-        return None
-    raw = path.read_text(encoding="utf-8").strip()
-    try:
-        return int(raw)
-    except ValueError:
-        return raw
-
-benchmark_rc = read_rc(benchmark_rc_path)
-eeg_rc = read_rc(eeg_rc_path)
-
-video_path = local_dir / "webrtc_capture.mp4"
-ffprobe = {}
-if video_path.is_file():
-    try:
-        out = subprocess.check_output(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-count_frames",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                "stream=nb_read_frames,duration,width,height,avg_frame_rate",
-                "-of",
-                "json",
-                str(video_path),
-            ],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-        ffprobe = json.loads(out)
-    except Exception as exc:
-        ffprobe = {"error": str(exc)}
-
-fps = float(benchmark.get("fps") or 0.0)
-first = benchmark.get("first_frame_latency_s")
-first_value = float(first) if first is not None else None
-acceptance = {
-    "min_fps": min_fps,
-    "max_first_frame_latency_s": max_first,
-    "fps_ok": fps >= min_fps,
-    "first_frame_latency_ok": first_value is not None and first_value <= max_first,
-    "frames_received_ok": int(benchmark.get("frame_count") or 0) > 0,
-    "synthetic_eeg_scope_updates_ok": scope_emit_count > 0 or (scope_emit_count == 0 and emit_count > 0 and eeg_rc == 0),
-    "local_video_ok": video_path.is_file() and video_path.stat().st_size > 0,
-}
-acceptance["passed"] = all(acceptance[k] for k in (
-    "fps_ok",
-    "first_frame_latency_ok",
-    "frames_received_ok",
-    "synthetic_eeg_scope_updates_ok",
-    "local_video_ok",
-))
-
-payload = {
-    "run_id": run_id,
-    "vast_instance_id": instance_id,
-    "runtime_tag": runtime_tag,
-    "profile": {
-        "height": height,
-        "width": width,
-    },
-    "local_dir": str(local_dir),
-    "flat_local_video": str(flat_video) if flat_video.is_file() else "",
-    "benchmark": benchmark,
-    "eeg": {
-        "record_count": len(eeg_records),
-        "emit_count": emit_count,
-        "scope_emit_count": scope_emit_count,
-        "scope_emit_count_fallback_used": scope_emit_count == 0 and emit_count > 0 and eeg_rc == 0,
-    },
-    "process_rc": {
-        "webrtc_benchmark": benchmark_rc,
-        "synthetic_eeg": eeg_rc,
-    },
-    "ffprobe": ffprobe,
-    "acceptance": acceptance,
-}
-report_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-print(json.dumps(payload["acceptance"], indent=2, sort_keys=True))
-raise SystemExit(0 if acceptance["passed"] else 2)
-PY
+  local report_path="$1"
+  local report_run_id="$2"
+  local report_local_dir="$3"
+  local report_flat_video="$4"
+  local report_height="$5"
+  local report_width="$6"
+  python3 "${SCRIPT_DIR}/scope_run_report.py" run \
+    --report-path "${report_path}" \
+    --run-id "${report_run_id}" \
+    --instance-id "${VAST_INSTANCE_ID:-}" \
+    --runtime-tag "${RUNTIME_TAG}" \
+    --local-dir "${report_local_dir}" \
+    --flat-video "${report_flat_video}" \
+    --height "${report_height}" \
+    --width "${report_width}" \
+    --min-fps "${MIN_FPS}" \
+    --max-first-frame-s "${MAX_FIRST_FRAME_LATENCY_S}" \
+    --phase-log "${PHASE_LOG}" \
+    --phase-report-path "${LOCAL_OUT_DIR}/phase_report.json" \
+    --artifact-qa-path "${report_local_dir}/artifact_qa.json" \
+    --contact-sheet-path "${report_local_dir}/contact_sheet.jpg"
 }
 
 pull_artifacts() {
   echo "[scope-vast] pulling artifacts to ${LOCAL_OUT_DIR}"
   mkdir -p "${LOCAL_OUT_DIR}"
   remote_scp_dir_from "${REMOTE_RUN_DIR}" "${LOCAL_OUT_DIR}"
-  if [[ -f "${LOCAL_OUT_DIR}/webrtc_capture.mp4" ]]; then
-    cp -f "${LOCAL_OUT_DIR}/webrtc_capture.mp4" "${FLAT_LOCAL_VIDEO}"
+}
+
+copy_flat_artifacts() {
+  local local_dir="$1"
+  local flat_video="$2"
+  local flat_frame="$3"
+  if [[ -f "${local_dir}/webrtc_capture.mp4" ]]; then
+    cp -f "${local_dir}/webrtc_capture.mp4" "${flat_video}"
   fi
-  if [[ -f "${LOCAL_OUT_DIR}/frames/frame_000024.png" ]]; then
-    cp -f "${LOCAL_OUT_DIR}/frames/frame_000024.png" "${FLAT_LOCAL_FRAME}"
+  if [[ -f "${local_dir}/frames/frame_000024.png" ]]; then
+    cp -f "${local_dir}/frames/frame_000024.png" "${flat_frame}"
   fi
+}
+
+write_sweep_report() {
+  local manifest_path="$1"
+  set +e
+  python3 "${SCRIPT_DIR}/scope_run_report.py" sweep \
+    --report-path "${LOCAL_OUT_DIR}/sweep_report.json" \
+    --markdown-path "${LOCAL_OUT_DIR}/sweep_report.md" \
+    --manifest-tsv "${manifest_path}" \
+    --run-id "${RUN_ID}" \
+    --instance-id "${VAST_INSTANCE_ID:-}" \
+    --runtime-tag "${RUNTIME_TAG}" \
+    --local-root "${LOCAL_OUT_DIR}" \
+    --phase-report-path "${LOCAL_OUT_DIR}/phase_report.json"
+  local rc=$?
+  set -e
+  return "${rc}"
 }
 
 if [[ ! -f "${SSH_KEY_PATH}" ]]; then
@@ -631,17 +621,95 @@ mark_phase "scope_server_started"
 mark_phase "scope_server_wait_start"
 wait_for_scope_server
 mark_phase "scope_server_wait_done"
-mark_phase "longlive_load_start"
-load_longlive
-mark_phase "longlive_load_done"
-mark_phase "webrtc_eeg_start"
-run_webrtc_and_eeg
-mark_phase "webrtc_eeg_done"
+
+RESOLUTION_ITEMS=()
+while IFS= read -r item; do
+  RESOLUTION_ITEMS+=("${item}")
+done < <(sweep_resolution_list)
+if [[ "${#RESOLUTION_ITEMS[@]}" -eq 0 ]]; then
+  echo "[error] no valid resolutions selected" >&2
+  exit 1
+fi
+
+SWEEP_MANIFEST_REMOTE="${REMOTE_RUN_DIR}/sweep_manifest.tsv"
+remote_ssh "printf 'label\theight\twidth\tlocal_dir\tflat_video\tflat_frame\treport_path\n' > $(q "${SWEEP_MANIFEST_REMOTE}")"
+for resolution in "${RESOLUTION_ITEMS[@]}"; do
+  SCOPE_HEIGHT="${resolution%x*}"
+  SCOPE_WIDTH="${resolution#*x}"
+  resolution_label="${SCOPE_HEIGHT}x${SCOPE_WIDTH}"
+  if is_sweep_mode; then
+    active_remote_dir="${REMOTE_RUN_DIR}/runs/${resolution_label}"
+    active_local_dir="${LOCAL_OUT_DIR}/runs/${resolution_label}"
+  else
+    active_remote_dir="${REMOTE_RUN_DIR}"
+    active_local_dir="${LOCAL_OUT_DIR}"
+  fi
+  active_flat_video="$(flat_video_for_label "${resolution_label}")"
+  active_flat_frame="$(flat_frame_for_label "${resolution_label}")"
+  active_report_path="${active_local_dir}/run_report.json"
+
+  mark_phase "resolution_${resolution_label}_start"
+  remote_ssh "mkdir -p $(q "${active_remote_dir}")"
+  mark_phase "longlive_load_${resolution_label}_start"
+  load_longlive "${active_remote_dir}/load_longlive.log"
+  mark_phase "longlive_load_${resolution_label}_done"
+  mark_phase "webrtc_eeg_${resolution_label}_start"
+  run_webrtc_and_eeg "${active_remote_dir}"
+  mark_phase "webrtc_eeg_${resolution_label}_done"
+  mark_phase "resolution_${resolution_label}_done"
+
+  remote_ssh "printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    $(q "${resolution_label}") \
+    $(q "${SCOPE_HEIGHT}") \
+    $(q "${SCOPE_WIDTH}") \
+    $(q "${active_local_dir}") \
+    $(q "${active_flat_video}") \
+    $(q "${active_flat_frame}") \
+    $(q "${active_report_path}") >> $(q "${SWEEP_MANIFEST_REMOTE}")"
+done
+
 mark_phase "artifact_pull_start"
 pull_artifacts
 mark_phase "artifact_pull_done"
 mark_phase "local_report_start"
-write_local_report
+report_rc=0
+while IFS= read -r resolution; do
+  SCOPE_HEIGHT="${resolution%x*}"
+  SCOPE_WIDTH="${resolution#*x}"
+  resolution_label="${SCOPE_HEIGHT}x${SCOPE_WIDTH}"
+  if is_sweep_mode; then
+    active_local_dir="${LOCAL_OUT_DIR}/runs/${resolution_label}"
+  else
+    active_local_dir="${LOCAL_OUT_DIR}"
+  fi
+  active_flat_video="$(flat_video_for_label "${resolution_label}")"
+  active_flat_frame="$(flat_frame_for_label "${resolution_label}")"
+  copy_flat_artifacts "${active_local_dir}" "${active_flat_video}" "${active_flat_frame}"
+  set +e
+  write_local_report \
+    "${active_local_dir}/run_report.json" \
+    "${RUN_ID}${SWEEP_RESOLUTIONS:+_${resolution_label}}" \
+    "${active_local_dir}" \
+    "${active_flat_video}" \
+    "${SCOPE_HEIGHT}" \
+    "${SCOPE_WIDTH}"
+  rc=$?
+  set -e
+  if ! is_sweep_mode && [[ "${rc}" -ne 0 ]]; then
+    report_rc="${rc}"
+  fi
+done < <(printf '%s\n' "${RESOLUTION_ITEMS[@]}")
+if is_sweep_mode; then
+  set +e
+  write_sweep_report "${LOCAL_OUT_DIR}/sweep_manifest.tsv"
+  sweep_rc=$?
+  set -e
+  report_rc="${sweep_rc}"
+fi
 mark_phase "local_report_done"
 echo "[scope-vast] local_dir=${LOCAL_OUT_DIR}"
 echo "[scope-vast] local_video=${FLAT_LOCAL_VIDEO}"
+if is_sweep_mode; then
+  echo "[scope-vast] sweep_report=${LOCAL_OUT_DIR}/sweep_report.json"
+fi
+exit "${report_rc}"

@@ -187,6 +187,22 @@ Default smoke profile:
 
 Use this wrapper for quick bring-up before attempting realtime streaming or EEG-driven prompt schedules.
 
+## Scope/LongLive same-instance sweep path
+
+Use this after selecting a GPU tier when the goal is to find the realtime resolution ceiling without paying repeated cold-start overhead:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_scope_longlive_vast_sweep.sh \
+  --create-instance \
+  --gpu-regex 'H100|H200|GH200' \
+  --max-dph 8.00 \
+  --duration-s 30 \
+  --resolutions 320x576,336x592,352x576,368x640
+```
+
+The sweep runner provisions once, restores the R2 tuple once, starts Scope once, reloads LongLive per resolution, runs WebRTC plus synthetic EEG per resolution, pulls all artifacts locally, writes `sweep_report.{json,md}`, and tears down by default.
+
 ## Scope/LongLive realtime matrix path
 
 Use this when the goal is to keep running across GPU tiers and resolutions:
@@ -204,10 +220,12 @@ The matrix runner:
 
 1. requires `--create-instance` before creating paid compute;
 2. re-scans Vast before each paid attempt;
-3. tries cheap-mid GPUs, Hopper-class GPUs, B200, and 4090 low-res probes within budget/time bounds;
+3. tries cheap-mid GPUs, Hopper-class GPUs, and B200 within budget/time bounds;
 4. delegates each paid attempt to the Scope smoke runner, preserving local artifact pullback and teardown;
-5. writes `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}`;
-6. checks final active instance count after paid runs without writing raw host/IP data into tracked docs.
+5. leaves `rtx4090_lowres` available only when explicitly requested with `--tiers rtx4090_lowres`;
+6. can preserve a credit reserve with `--min-credit-reserve-usd`;
+7. writes `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` and sanitized `invoice_report.json`;
+8. checks final active instance count after paid runs without writing raw host/IP data into tracked docs.
 
 Latest matrix telemetry (`scope_longlive_vast_matrix_20260520T200307Z`):
 
@@ -217,23 +235,24 @@ Latest matrix telemetry (`scope_longlive_vast_matrix_20260520T200307Z`):
 4. RTX 4090 failed `256x448` at `12.912 fps`.
 5. Invoice-observed spend was about `$4.10`.
 6. Final active instances were `[]`.
+7. H200 throughput was consistently about `4.8-4.9 MPix/s`, making `~200k px/frame` the current practical ceiling for `24 fps`.
 
 ## Scope/LongLive realtime smoke path
 
-For one cheap realtime validation attempt, use the Scope wrapper:
+For one realtime validation attempt, use the Scope wrapper:
 
 ```bash
 cd /Users/xenochain/Code/neurodiffusion
 bash VideoDiffusion/run_scope_longlive_vast_smoke.sh \
   --create-instance \
-  --gpu-regex 'RTX.?4090|RTX.?5090|L40S' \
-  --max-dph 1.50 \
+  --gpu-regex 'H100|H200|GH200' \
+  --max-dph 8.00 \
   --duration-s 30
 ```
 
 The wrapper:
 
-1. queries and selects a cheap Scope-capable offer;
+1. queries and selects a Scope-capable offer;
 2. provisions a direct-SSH Vast instance only when `--create-instance` is passed;
 3. syncs the current repo state to `/workspace/neurodiffusion`;
 4. installs minimal host tools, `uv`, and media utilities when missing;
@@ -243,7 +262,8 @@ The wrapper:
 8. loads LongLive with `SCOPE_VACE_ENABLED=false`;
 9. records WebRTC output while synthetic EEG drives the Scope OSC sink;
 10. pulls MP4, sampled frames, logs, and `run_report.json` to `/Users/xenochain/Downloads/<run_id>/`;
-11. destroys a wrapper-created instance by default.
+11. writes `phase_report.json`, `artifact_qa.json`, and `contact_sheet.jpg` locally;
+12. destroys a wrapper-created instance by default.
 
 Acceptance is encoded in `run_report.json`:
 
@@ -251,7 +271,8 @@ Acceptance is encoded in `run_report.json`:
 - receive FPS `>=24`;
 - first-frame latency `<=2s`;
 - at least one synthetic EEG Scope OSC update;
-- non-empty local MP4.
+- non-empty local MP4;
+- nonblank artifact QA when local media tools are available.
 
 Use `--keep-instance` only for intentional interactive debugging.
 If using the B200-published tuple on cheaper GPUs, the wrapper deliberately passes the runtime mismatch path because Scope tuple reuse is env/cache-oriented rather than MAGI custom-kernel-oriented.

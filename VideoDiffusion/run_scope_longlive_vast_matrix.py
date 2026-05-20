@@ -33,7 +33,7 @@ SMOKE_SCRIPT = SCRIPT_DIR / "run_scope_longlive_vast_smoke.sh"
 DEFAULT_RUNTIME_TAG = "scope_auto_py312_torch2.9.1_cu128_sm100"
 DEFAULT_TARGET_RES = "320x576"
 DEFAULT_LOWER_RESOLUTIONS = "256x448,192x320"
-DEFAULT_UPPER_RESOLUTIONS = "368x640,480x832"
+DEFAULT_UPPER_RESOLUTIONS = "336x592,352x576,368x640,480x832"
 
 CSV_FIELDS = [
     "row_idx",
@@ -45,6 +45,7 @@ CSV_FIELDS = [
     "condition",
     "gpu_regex",
     "offer_id",
+    "vast_instance_id",
     "gpu_name",
     "dph_total",
     "height",
@@ -58,9 +59,14 @@ CSV_FIELDS = [
     "frame_count",
     "elapsed_s",
     "estimated_cost_usd",
+    "pixels",
+    "megapixels_per_s",
     "local_dir",
     "flat_local_video",
     "report_path",
+    "phase_report_path",
+    "artifact_qa_path",
+    "contact_sheet_path",
     "log_path",
     "error",
 ]
@@ -84,12 +90,14 @@ class Tier:
     mode: str
 
 
-DEFAULT_TIERS = [
+KNOWN_TIERS = [
     Tier("cheap_mid", r"RTX.?5090|L40S|RTX.?6000|A6000", 2.50, "full"),
     Tier("hopper", r"H100|H200|GH200", 8.00, "full"),
     Tier("b200_known_good", r"B200", 8.00, "full"),
     Tier("rtx4090_lowres", r"RTX.?4090", 1.50, "low"),
 ]
+DEFAULT_TIER_NAMES = {"cheap_mid", "hopper", "b200_known_good"}
+DEFAULT_TIERS = [tier for tier in KNOWN_TIERS if tier.name in DEFAULT_TIER_NAMES]
 
 
 def utc_stamp() -> str:
@@ -118,11 +126,11 @@ def parse_resolution_list(raw: str) -> list[Resolution]:
 def parse_tiers(raw: str) -> list[Tier]:
     if not raw.strip():
         return DEFAULT_TIERS
-    by_name = {tier.name: tier for tier in DEFAULT_TIERS}
+    by_name = {tier.name: tier for tier in KNOWN_TIERS}
     selected: list[Tier] = []
     for name in [part.strip() for part in raw.split(",") if part.strip()]:
         if name not in by_name:
-            known = ", ".join(t.name for t in DEFAULT_TIERS)
+            known = ", ".join(t.name for t in KNOWN_TIERS)
             raise argparse.ArgumentTypeError(f"unknown tier '{name}', known tiers: {known}")
         selected.append(by_name[name])
     return selected
@@ -394,6 +402,12 @@ def run_smoke_attempt(
     report = parse_smoke_report(report_path)
     acceptance = report.get("acceptance") or {}
     benchmark = report.get("benchmark") or {}
+    fps_raw = benchmark.get("fps")
+    try:
+        fps_value = float(fps_raw)
+    except Exception:
+        fps_value = 0.0
+    pixels = resolution.height * resolution.width
 
     if timed_out:
         status = "TIMEOUT"
@@ -414,6 +428,7 @@ def run_smoke_attempt(
         "condition": condition,
         "gpu_regex": tier.gpu_regex,
         "offer_id": offer.get("offer_id") or "",
+        "vast_instance_id": report.get("vast_instance_id", "") if report else "",
         "gpu_name": offer.get("gpu_name") or "",
         "dph_total": offer.get("dph_total") or "",
         "height": resolution.height,
@@ -430,9 +445,14 @@ def run_smoke_attempt(
             estimate_attempt_cost_usd(offer.get("dph_total"), elapsed, args.per_attempt_fixed_cost_usd),
             4,
         ),
+        "pixels": pixels,
+        "megapixels_per_s": round((pixels * fps_value) / 1_000_000.0, 4) if fps_value else "",
         "local_dir": str(local_dir),
         "flat_local_video": str(flat_video) if flat_video.is_file() else "",
         "report_path": str(report_path) if report_path.is_file() else "",
+        "phase_report_path": report.get("phase_report_path", "") if report else "",
+        "artifact_qa_path": report.get("artifact_qa_path", "") if report else "",
+        "contact_sheet_path": str((local_dir / "contact_sheet.jpg")) if (local_dir / "contact_sheet.jpg").is_file() else "",
         "log_path": str(log_path),
         "error": "" if report else f"see {log_path}",
     }
@@ -454,6 +474,141 @@ def active_instance_summary() -> dict[str, Any]:
         return {"checked": False, "active_instance_count": None, "error": "could not parse vastai show instances"}
     count = len(payload) if isinstance(payload, list) else None
     return {"checked": True, "active_instance_count": count, "error": ""}
+
+
+def extract_credit_usd(payload: Any) -> float | None:
+    if isinstance(payload, dict):
+        for key in ("credit", "credits", "balance", "balance_usd", "balanceUSD"):
+            value = payload.get(key)
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                try:
+                    return float(value)
+                except ValueError:
+                    pass
+        for value in payload.values():
+            found = extract_credit_usd(value)
+            if found is not None:
+                return found
+    if isinstance(payload, list):
+        for item in payload:
+            found = extract_credit_usd(item)
+            if found is not None:
+                return found
+    return None
+
+
+def vast_credit_summary() -> dict[str, Any]:
+    proc = subprocess.run(
+        ["vastai", "show", "user", "--raw"],
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return {"checked": False, "credit_usd": None, "error": (proc.stderr or proc.stdout).strip()}
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return {"checked": False, "credit_usd": None, "error": "could not parse vastai show user"}
+    credit = extract_credit_usd(payload)
+    if credit is None:
+        return {"checked": False, "credit_usd": None, "error": "credit field not found"}
+    return {"checked": True, "credit_usd": round(credit, 6), "error": ""}
+
+
+def scalar(value: Any) -> bool:
+    return value is None or isinstance(value, (str, int, float, bool))
+
+
+def invoice_matches_instance(row: Any, instance_ids: set[str]) -> bool:
+    if not instance_ids:
+        return False
+    if isinstance(row, dict):
+        return any(invoice_matches_instance(value, instance_ids) for value in row.values())
+    if isinstance(row, list):
+        return any(invoice_matches_instance(value, instance_ids) for value in row)
+    return str(row) in instance_ids
+
+
+def sanitize_invoice_row(row: dict[str, Any]) -> dict[str, Any]:
+    allowed_fragments = (
+        "amount",
+        "balance",
+        "charge",
+        "cost",
+        "created",
+        "credit",
+        "description",
+        "gpu",
+        "id",
+        "instance",
+        "quantity",
+        "rate",
+        "timestamp",
+        "type",
+    )
+    clean: dict[str, Any] = {}
+    for key, value in row.items():
+        key_l = str(key).lower()
+        if not any(fragment in key_l for fragment in allowed_fragments):
+            continue
+        if scalar(value):
+            clean[str(key)] = value
+    return clean
+
+
+def write_invoice_report(local_root: Path, rows: list[dict[str, Any]]) -> tuple[Path, dict[str, Any]]:
+    path = local_root / "invoice_report.json"
+    instance_ids = {str(row.get("vast_instance_id")) for row in rows if row.get("vast_instance_id")}
+    proc = subprocess.run(
+        ["vastai", "show", "invoices", "--raw"],
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        payload = {
+            "checked": False,
+            "instance_ids": sorted(instance_ids),
+            "matched_rows": [],
+            "matched_count": 0,
+            "error": (proc.stderr or proc.stdout or "empty invoice response").strip(),
+        }
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return path, {k: payload[k] for k in ("checked", "matched_count", "error")}
+
+    try:
+        raw = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        payload = {
+            "checked": False,
+            "instance_ids": sorted(instance_ids),
+            "matched_rows": [],
+            "matched_count": 0,
+            "error": "could not parse vastai show invoices",
+        }
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return path, {k: payload[k] for k in ("checked", "matched_count", "error")}
+
+    source_rows = raw if isinstance(raw, list) else raw.get("invoices", []) if isinstance(raw, dict) else []
+    matched = [
+        sanitize_invoice_row(item)
+        for item in source_rows
+        if isinstance(item, dict) and invoice_matches_instance(item, instance_ids)
+    ]
+    payload = {
+        "checked": True,
+        "instance_ids": sorted(instance_ids),
+        "matched_rows": matched,
+        "matched_count": len(matched),
+        "error": "",
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path, {"checked": True, "matched_count": len(matched), "error": ""}
 
 
 def write_reports(
@@ -485,6 +640,19 @@ def write_reports(
     passed = [row for row in numbered_rows if row.get("status") == "PASS"]
     attempted = [row for row in numbered_rows if row.get("attempt_idx")]
     spend = sum(float(row.get("estimated_cost_usd") or 0.0) for row in attempted)
+    if args.create_instance:
+        invoice_path, invoice_summary = write_invoice_report(local_root, numbered_rows)
+    else:
+        invoice_path = local_root / "invoice_report.json"
+        invoice_payload = {
+            "checked": False,
+            "instance_ids": [],
+            "matched_rows": [],
+            "matched_count": 0,
+            "error": "no paid run",
+        }
+        invoice_path.write_text(json.dumps(invoice_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        invoice_summary = {"checked": False, "matched_count": 0, "error": "no paid run"}
     payload = {
         "matrix_run_id": matrix_run_id,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -500,6 +668,8 @@ def write_reports(
             "max_budget_usd": args.max_budget_usd,
             "budget_estimate_s": args.budget_estimate_s,
             "per_attempt_fixed_cost_usd": args.per_attempt_fixed_cost_usd,
+            "min_credit_reserve_usd": args.min_credit_reserve_usd,
+            "require_credit_check": bool(args.require_credit_check),
             "estimated_spend_usd": round(spend, 4),
             "max_attempts": args.max_attempts,
         },
@@ -510,6 +680,8 @@ def write_reports(
             "passed": len(passed),
             "best_pass": passed[0] if passed else None,
             "final_instances": final_instances,
+            "invoice_report_path": str(invoice_path),
+            "invoice": invoice_summary,
         },
         "rows": numbered_rows,
     }
@@ -525,24 +697,28 @@ def write_reports(
         f"- pass count: `{len(passed)}`",
         f"- final active Vast instances checked: `{final_instances.get('checked')}`",
         f"- final active Vast instance count: `{final_instances.get('active_instance_count')}`",
+        f"- invoice report: `{invoice_path}`",
+        f"- invoice rows matched: `{invoice_summary.get('matched_count')}`",
         "",
-        "| # | Tier | Phase | GPU | Res HxW | Status | FPS | First frame | Video |",
-        "| ---: | --- | --- | --- | --- | --- | ---: | ---: | --- |",
+        "| # | Tier | Phase | GPU | Res HxW | Pixels | Status | FPS | MPix/s | First frame | Video |",
+        "| ---: | --- | --- | --- | --- | ---: | --- | ---: | ---: | ---: | --- |",
     ]
     for row in numbered_rows:
         video = row.get("flat_local_video") or ""
         video_cell = f"`{video}`" if video else ""
         lines.append(
-            "| {row_idx} | `{tier}` | `{phase}` | `{gpu}` | `{height}x{width}` | `{status}` | "
-            "{fps} | {first} | {video} |".format(
+            "| {row_idx} | `{tier}` | `{phase}` | `{gpu}` | `{height}x{width}` | {pixels} | `{status}` | "
+            "{fps} | {mpix} | {first} | {video} |".format(
                 row_idx=row.get("row_idx", ""),
                 tier=row.get("tier", ""),
                 phase=row.get("phase", ""),
                 gpu=row.get("gpu_name") or row.get("gpu_regex", ""),
                 height=row.get("height", ""),
                 width=row.get("width", ""),
+                pixels=row.get("pixels", ""),
                 status=row.get("status", ""),
                 fps=row.get("fps", ""),
+                mpix=row.get("megapixels_per_s", ""),
                 first=row.get("first_frame_latency_s", ""),
                 video=video_cell,
             )
@@ -575,6 +751,7 @@ def append_plan_row(
             "condition": condition,
             "gpu_regex": tier.gpu_regex,
             "offer_id": (offer or {}).get("offer_id", ""),
+            "vast_instance_id": "",
             "gpu_name": (offer or {}).get("gpu_name", ""),
             "dph_total": (offer or {}).get("dph_total", ""),
             "height": resolution.height,
@@ -597,9 +774,14 @@ def append_plan_row(
             )
             if offer
             else 0.0,
+            "pixels": resolution.height * resolution.width,
+            "megapixels_per_s": "",
             "local_dir": "",
             "flat_local_video": "",
             "report_path": "",
+            "phase_report_path": "",
+            "artifact_qa_path": "",
+            "contact_sheet_path": "",
             "log_path": "",
             "error": error,
         }
@@ -689,7 +871,8 @@ def run_matrix(args: argparse.Namespace) -> int:
             if not sequence:
                 break
 
-            for phase, condition, resolution in sequence:
+            upscale_failed = False
+            for seq_idx, (phase, condition, resolution) in enumerate(sequence):
                 if paid_attempts >= args.max_attempts:
                     append_plan_row(
                         rows,
@@ -746,6 +929,43 @@ def run_matrix(args: argparse.Namespace) -> int:
                     args.budget_estimate_s,
                     args.per_attempt_fixed_cost_usd,
                 )
+                if args.min_credit_reserve_usd > 0:
+                    credit = vast_credit_summary()
+                    if not credit.get("checked"):
+                        if args.require_credit_check:
+                            append_plan_row(
+                                rows,
+                                args=args,
+                                matrix_run_id=matrix_run_id,
+                                tier=tier,
+                                phase=phase,
+                                condition="credit_check",
+                                resolution=resolution,
+                                offer=offer,
+                                status="CREDIT_CHECK_FAILED",
+                                error=str(credit.get("error") or "credit check failed"),
+                            )
+                            break
+                    else:
+                        available = float(credit.get("credit_usd") or 0.0) - args.min_credit_reserve_usd
+                        if available < next_budget:
+                            append_plan_row(
+                                rows,
+                                args=args,
+                                matrix_run_id=matrix_run_id,
+                                tier=tier,
+                                phase=phase,
+                                condition="credit_reserve",
+                                resolution=resolution,
+                                offer=offer,
+                                status="CREDIT_SKIPPED",
+                                error=(
+                                    f"credit ${credit.get('credit_usd'):.4f} with reserve "
+                                    f"${args.min_credit_reserve_usd:.2f} leaves ${available:.4f}; "
+                                    f"next estimate is ${next_budget:.4f}"
+                                ),
+                            )
+                            break
                 if spent + next_budget > args.max_budget_usd:
                     append_plan_row(
                         rows,
@@ -796,8 +1016,29 @@ def run_matrix(args: argparse.Namespace) -> int:
                 if phase == "target":
                     target_passed = row.get("status") == "PASS"
                     break
+                if phase == "upscale" and row.get("status") != "PASS" and not args.continue_after_upscale_fail:
+                    upscale_failed = True
+                    for skipped_phase, skipped_condition, skipped_resolution in sequence[seq_idx + 1 :]:
+                        append_plan_row(
+                            rows,
+                            args=args,
+                            matrix_run_id=matrix_run_id,
+                            tier=tier,
+                            phase=skipped_phase,
+                            condition="upscale_failed",
+                            resolution=skipped_resolution,
+                            offer=None,
+                            status="UPGRADE_STOP_SKIPPED",
+                            error=(
+                                f"stopped after failed upscale {resolution.label}; "
+                                "pass --continue-after-upscale-fail for exhaustive probing"
+                            ),
+                        )
+                    break
 
             if target_passed is None:
+                break
+            if upscale_failed:
                 break
             target_passed = True if target_passed else False
             if tier.mode == "low":
@@ -828,7 +1069,9 @@ def selftest() -> int:
     assert target == Resolution(320, 576)
     assert lower[-1] == Resolution(192, 320)
     assert upper[-1] == Resolution(480, 832)
-    tiers_by_name = {tier.name: tier for tier in DEFAULT_TIERS}
+    tiers_by_name = {tier.name: tier for tier in KNOWN_TIERS}
+    assert "rtx4090_lowres" not in {tier.name for tier in DEFAULT_TIERS}
+    assert parse_tiers("rtx4090_lowres")[0].name == "rtx4090_lowres"
     assert plan_rows_for_tier(tier=tiers_by_name["cheap_mid"], target=target, lower=lower, upper=upper)[0][0] == "target"
     assert all(
         row[0] == "lowres"
@@ -848,6 +1091,8 @@ def selftest() -> int:
         max_budget_usd=1.0,
         budget_estimate_s=30,
         per_attempt_fixed_cost_usd=0.0,
+        min_credit_reserve_usd=0.0,
+        require_credit_check=False,
         max_attempts=1,
     )
     with tempfile.TemporaryDirectory() as tmp:
@@ -905,6 +1150,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=1.0,
         help="Estimated per-attempt transfer/storage overhead added to budget guard and reports",
     )
+    parser.add_argument(
+        "--min-credit-reserve-usd",
+        type=float,
+        default=0.0,
+        help="Optional Vast credit reserve; skip paid creates when credit minus reserve cannot cover next estimate",
+    )
+    parser.add_argument(
+        "--require-credit-check",
+        action="store_true",
+        help="Fail/skip paid rows if Vast credit cannot be checked before launch",
+    )
     parser.add_argument("--max-attempts", type=int, default=10)
     parser.add_argument("--max-wall-clock-s", type=int, default=14400)
     parser.add_argument("--max-attempt-wall-clock-s", type=int, default=2400)
@@ -914,6 +1170,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-restore", action="store_true")
     parser.add_argument("--download-fallback", action="store_true")
     parser.add_argument("--stop-after-first-pass", action="store_true")
+    parser.add_argument(
+        "--continue-after-upscale-fail",
+        action="store_true",
+        help="Keep probing larger resolutions after the first failed upscale",
+    )
     parser.add_argument(
         "--allow-runtime-gpu-mismatch",
         dest="allow_runtime_gpu_mismatch",
@@ -944,6 +1205,8 @@ def main(argv: list[str]) -> int:
         parser.error("--max-attempts must be >= 1")
     if args.max_budget_usd <= 0:
         parser.error("--max-budget-usd must be positive")
+    if args.min_credit_reserve_usd < 0:
+        parser.error("--min-credit-reserve-usd must be >= 0")
     parse_tiers(args.tiers)
     parse_resolution(args.target_res)
     parse_resolution_list(args.lower_resolutions)

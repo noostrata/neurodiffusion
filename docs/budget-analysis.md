@@ -1,6 +1,6 @@
 # Budget Analysis (Vast + Cloudflare R2)
 
-_Last validated: 2026-05-15T00:00:00Z_
+_Last validated: 2026-05-20T00:00:00Z_
 
 This is the canonical budget reference for this repository.
 Use it for storage planning, run-time caps, and quick spend estimates before MAGI runs.
@@ -155,8 +155,9 @@ Paid run; instance destroyed after local pullback.
 Cost interpretation:
 
 1. B200 proved the Scope/LongLive realtime control path under synthetic EEG.
-2. The next cost optimization is to retest the same R2 tuple on `RTX 4090`, `RTX 5090`, or `L40S`.
-3. If those hold `>=24 fps` at `320x576`, they should replace B200 as the default art-loop GPU.
+2. The next cost optimization is to retest the same R2 tuple on `RTX 5090`, `L40S`, or H100/H200-class offers.
+3. `RTX 4090` should be treated as explicit protocol/quality-check hardware for this profile, not the default realtime cost target.
+4. If a cheaper non-4090 tier holds `>=24 fps` at `320x576`, it should replace B200 as the default art-loop GPU.
 
 ### Vast Scope/LongLive RTX 4090 smoke (2026-05-20)
 
@@ -178,7 +179,18 @@ Cost/performance interpretation:
 
 ### Vast Scope/LongLive matrix guard (2026-05-20)
 
-Use the matrix runner for the next paid pass:
+Use the same-instance sweep runner when a GPU tier is already chosen and the goal is resolution edge-finding:
+
+```bash
+bash VideoDiffusion/run_scope_longlive_vast_sweep.sh \
+  --create-instance \
+  --gpu-regex 'H100|H200|GH200' \
+  --max-dph 8.00 \
+  --duration-s 30 \
+  --resolutions 320x576,336x592,352x576,368x640
+```
+
+Use the matrix runner when the goal is cross-GPU offer selection:
 
 ```bash
 bash VideoDiffusion/run_scope_longlive_vast_matrix.sh \
@@ -196,6 +208,9 @@ Budget controls:
 4. `--max-attempt-wall-clock-s` defaults to `2400`; a timed-out smoke receives `SIGTERM`, then the matrix tries to terminate its parsed owned instance id.
 5. Every paid attempt still uses the smoke runner teardown path unless `--keep-instance` is explicitly passed.
 6. Final matrix reports estimate spend from observed wall-clock time times the selected offer hourly rate plus the configured fixed overhead.
+7. `--min-credit-reserve-usd` can keep a Vast credit reserve before paid creates; use `--require-credit-check` if the run must stop when credit cannot be queried.
+8. The default matrix no longer includes `RTX 4090`; use `--tiers rtx4090_lowres` only for explicit protocol/quality checks.
+9. Paid matrix reports also write a sanitized `invoice_report.json` that keeps only matching invoice rows for created instance ids when Vast exposes them.
 
 ### Vast Scope/LongLive H200/4090 matrix spend (2026-05-20)
 
@@ -213,7 +228,8 @@ Cost interpretation:
 
 1. H200 target validation is affordable enough for short sweeps, but cold restore dominates wall-clock time.
 2. H200 transfer charges were near-zero in this invoice sample, while the 4090 restore charged about `$0.758` for download.
-3. Same-instance multi-resolution sweeps should be cheaper and faster than one fresh instance per resolution.
+3. Same-instance multi-resolution sweeps should be cheaper and faster than one fresh instance per resolution because they amortize provision, R2 restore, Scope server startup, and teardown.
+4. The H200 results imply about `4.8-4.9 MPix/s`; `24 fps` therefore wants about `<=200k px/frame` before display upscaling.
 
 ### Prime managed disk rates in `eu_north` (USD / GB-hour)
 

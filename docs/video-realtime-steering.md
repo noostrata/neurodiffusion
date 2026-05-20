@@ -71,7 +71,8 @@ On pod boot:
 1. restore runtime tuple from R2
 2. warm runtime
 3. start stream server
-4. for Scope/LongLive matrix validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh` so offer retries, teardown, and local artifact pullback are recorded.
+4. for Scope/LongLive resolution edge-finding on one GPU, use `VideoDiffusion/run_scope_longlive_vast_sweep.sh` so one restore/server start can cover multiple resolutions;
+5. for cross-GPU Scope/LongLive matrix validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh` so offer retries, teardown, and local artifact pullback are recorded.
 
 ## Public interface contract
 
@@ -99,7 +100,7 @@ Scope-specific controls:
 
 1. No-cost selftests pass, including fake Scope OSC prompt delivery and the Scope/Vast matrix selftest.
 2. Scope/LongLive cold setup reaches pipeline `loaded`.
-3. Matrix run proves at least one tier at `>=24 fps`, first frame `<=2s`, synthetic EEG OSC updates, and local MP4 pullback.
+3. Sweep or matrix run proves at least one tier at `>=24 fps`, first frame `<=2s`, synthetic EEG OSC updates, local MP4 pullback, `phase_report.json`, and artifact QA.
 4. Steering latency run (20 EEG-triggered changes) reports acceptable prompt-to-visible-change `p50/p90`.
 5. 30-minute soak has no OOM/restart.
 6. Equal-latency quality A/B confirms selected tier/backend beats baseline.

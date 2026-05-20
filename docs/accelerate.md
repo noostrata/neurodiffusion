@@ -45,8 +45,9 @@ Restore order for a fast next boot:
 4. start with `SCOPE_AUTO_LOAD=0`;
 5. load LongLive explicitly with `SCOPE_VACE_ENABLED=false`.
 
-For a single paid validation, `VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance` automates that sequence plus offer selection, WebRTC capture, synthetic EEG control, local artifact pullback, `run_report.json`, and teardown.
-For the next systematic paid validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh --create-instance`; it wraps the smoke path with fresh offer retries, GPU tier sequencing, resolution probes, budget/time guards, and aggregate reports.
+For a single paid validation, `VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance` automates that sequence plus offer selection, WebRTC capture, synthetic EEG control, local artifact pullback, `run_report.json`, artifact QA, and teardown.
+For same-GPU resolution edge-finding, use `VideoDiffusion/run_scope_longlive_vast_sweep.sh --create-instance`; it restores once, starts Scope once, reloads LongLive for each resolution, and writes `sweep_report.{json,md}`.
+For cross-GPU paid validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh --create-instance`; it wraps the smoke path with fresh offer retries, GPU tier sequencing, adaptive resolution probes, budget/time/credit guards, and aggregate reports.
 
 Prebuild boundary:
 
@@ -60,7 +61,7 @@ Current publish controls:
 2. `VideoDiffusion/publish_r2_prebuild_model.sh` supports `--env-compression gzip|zstd|none` and `--weights-compression gzip|zstd|none`.
 3. For Scope/LongLive, use gzip or zstd for the env archive and `--weights-compression none` for fastest large model-cache publish when R2 storage cost is less important than startup iteration time.
 
-Next paid validation should optimize for low hourly burn but still include the known-good fallback:
+Next cross-GPU validation should optimize for low hourly burn but still include the known-good fallback:
 
 1. `RTX 5090 32GB` if available and reliable;
 2. `L40S` / `RTX 6000 Ada` for more memory headroom;
@@ -79,7 +80,18 @@ Latest H200 matrix result:
 1. `H200` passed `320x576` at `25.376 fps`, first frame `1.338s`.
 2. `H200` failed `368x640` at `20.835 fps`.
 3. `H200` failed `480x832` at `12.171 fps`.
-4. The next acceleration target is same-instance resolution sweeping, because each fresh instance currently spends roughly `8-13 min` in cold setup/restore/load/pullback around a `30s` benchmark.
+4. Effective throughput was stable at about `4.8-4.9 MPix/s`, so a `24 fps` realtime target should stay near `<=200k px/frame`.
+5. The next acceleration target is same-instance resolution sweeping, because each fresh instance currently spends roughly `8-13 min` in cold setup/restore/load/pullback around a `30s` benchmark.
+
+Current H200 edge probes:
+
+| Resolution | Pixels | Expected status from model |
+| --- | ---: | --- |
+| `320x576` | `184,320` | proven realtime |
+| `336x592` | `198,912` | edge candidate |
+| `352x576` | `202,752` | edge candidate |
+| `368x640` | `235,520` | measured below realtime |
+| `480x832` | `399,360` | measured about half realtime |
 
 ## 1) Why this policy
 

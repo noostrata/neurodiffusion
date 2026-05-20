@@ -129,6 +129,26 @@ Conclusions:
 5. The main pipeline inefficiency is repeated cold restore per resolution. The next optimization is a same-instance multi-resolution sweep that restores once, then reloads LongLive at multiple resolutions before teardown.
 6. Future smoke logs now include `[scope-vast-ts]` UTC phase markers so setup, restore, load, capture, pullback, and report timings are directly parseable.
 
+Follow-up code-quality changes:
+
+1. `VideoDiffusion/run_scope_longlive_vast_sweep.sh` is now the preferred same-instance edge-finding entry point. It creates one Vast instance, restores once, starts one Scope server, reloads LongLive at each requested resolution, then writes per-resolution `run_report.json` files plus aggregate `sweep_report.{json,md}`.
+2. `VideoDiffusion/scope_run_report.py` now owns local report construction, phase parsing, ffprobe metadata, nonblank luma QA, and contact-sheet generation.
+3. `VideoDiffusion/run_scope_longlive_vast_matrix.py` no longer includes `RTX 4090` in the default realtime tier list. `rtx4090_lowres` remains available only when explicitly requested.
+4. Default upscale probes now include `336x592` and `352x576` before `368x640` and `480x832`, matching the observed H200 pixel-throughput ceiling.
+5. The default matrix stops after the first failed upscale probe; pass `--continue-after-upscale-fail` for exhaustive probing.
+6. The matrix budget guard can now preserve Vast credit with `--min-credit-reserve-usd` and require a successful credit query with `--require-credit-check`.
+7. Paid matrix reports now include sanitized `invoice_report.json` matched by created instance ids when Vast exposes invoice rows.
+
+Performance model:
+
+| Resolution | Pixels | Observed FPS | Pixel throughput |
+| --- | ---: | ---: | ---: |
+| `320x576` | `184,320` | `25.376` | `4.68 MPix/s` |
+| `368x640` | `235,520` | `20.835` | `4.91 MPix/s` |
+| `480x832` | `399,360` | `12.171` | `4.86 MPix/s` |
+
+Interpretation: the sampled H200 path is compute-bound around `4.8-4.9 MPix/s`. For `24 fps`, this implies an effective realtime ceiling around `200k px/frame`, so `320x576` is inside the current envelope, `336x592`/`352x576` are the right edge probes, and `368x640` is expected to miss unless runtime throughput improves.
+
 ## 2026-05-20 cheap-GPU automation prep
 
 Status: local runner implemented; first cheap-GPU validation recorded below.
@@ -522,13 +542,13 @@ VideoDiffusion/.tmp/scope_b200_20260515T194707Z_remote/r2_verify_metadata_files.
 
 Recommended next empirical pass:
 
-1. test the same patched Scope tuple on cheaper `RTX 4090`, `RTX 5090`, or `L40S` Vast offers;
-2. measure whether they still hold `>=24 fps` at `320x576`;
-3. if yes, B200 is unnecessary for the art loop and should be reserved for Krea or higher resolution;
-4. if no, keep B200/H100-class for performance and use cheaper GPUs only for protocol checks.
+1. use `VideoDiffusion/run_scope_longlive_vast_sweep.sh` on H200/B200 to probe the `~200k px/frame` edge (`320x576`, `336x592`, `352x576`, `368x640`);
+2. test currently available `RTX 5090` or `L40S` offers when they satisfy the Scope query constraints;
+3. keep `RTX 4090` as explicit protocol/quality-check hardware unless a much lower-resolution art mode becomes acceptable;
+4. if a cheaper non-4090 tier holds `>=24 fps` at `320x576`, it can replace B200/H200 as the default art-loop GPU.
 
 Recommended code/doc improvement:
 
 1. republish the Scope tuple with a faster model-cache archive mode if R2 transfer/extract time dominates the next boot;
-2. run the one-command Scope Vast smoke on `RTX 4090`, `RTX 5090`, or `L40S`;
+2. use `scope_run_report.py` outputs (`phase_report.json`, `artifact_qa.json`, contact sheets) as the telemetry contract for future paid runs;
 3. decide whether to upstream the Scope text-mode WebRTC keepalive patch.

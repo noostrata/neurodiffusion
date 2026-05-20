@@ -1,0 +1,763 @@
+# LongLive2 Paid-Run Plan
+
+_Last updated: 2026-05-21_
+
+This is the operator launch plan for the first LongLive2 sequence-parallel run.
+It is intentionally conservative because the current Vast budget is enough for a controlled smoke, not an open-ended build/debug session.
+
+Use this file as the live checklist during the run. Do not treat it as static
+background documentation: update the status rows, telemetry table, and "What
+Changed" notes as soon as each phase finishes.
+
+## Canonical References
+
+Read these before changing the run path:
+
+1. `AGENTS.md` — repo operator rules, paid-instance discipline, and LongLive2-specific constraints.
+2. `docs/video-longlive2-sp-streaming.md` — detailed LongLive2 SP research, code plumbing, paper limitations, and validation gates.
+3. `docs/vastai.md` — Vast provisioning, offer selection, SSH, lifecycle, teardown, and LongLive2 run commands.
+4. `docs/accelerate.md` — acceleration policy, hardware lanes, R2 boundaries, and the Blackwell/NVFP4 limitation.
+5. `docs/cloudflare-r2.md` — R2 tuple publish/restore contract and what R2 can/cannot persist.
+6. `docs/budget-analysis.md` — current cost formulas, prior spend, and LongLive2 SP budget controls.
+7. `docs/eeg-openbci-control.md` — synthetic/OpenBCI EEG control path and LongLive2 offline schedule generation.
+8. `docs/video-realtime-steering.md` — cross-model realtime steering architecture and acceptance gates.
+9. `docs/video-scope-longlive-streaming.md` — current validated Scope + LongLive live EEG path.
+10. `docs/video-scope-longlive-observations.md` — empirical Scope/LongLive performance baselines.
+11. `docs/references.md` — upstream LongLive/LongLive2 papers, model cards, and source links.
+
+Relevant implementation entry points:
+
+1. `VideoDiffusion/setup_longlive2.sh`
+2. `VideoDiffusion/download_longlive2_models.sh`
+3. `VideoDiffusion/longlive2_config.py`
+4. `VideoDiffusion/run_longlive2_sp_offline.sh`
+5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh`
+6. `VideoDiffusion/longlive2_run_report.py`
+7. `scripts/vast/query_video_offers.py`
+8. `scripts/vast/select_video_offer.py`
+9. `VideoDiffusion/publish_r2_prebuild_model.sh`
+10. `VideoDiffusion/restore_r2_prebuild_model.sh`
+
+## First-Principles Objective
+
+The system we want is:
+
+```text
+EEG state -> stable low-rate command -> video model state -> visible change -> audience/brain reacts -> repeat
+```
+
+The LongLive2 question is narrower:
+
+```text
+Can one video stream become fast enough by splitting one generation state across multiple GPUs?
+```
+
+Data parallelism is not useful for the installation because it creates multiple independent videos.
+The target is sequence parallelism:
+
+```text
+one LongLive2 AR state
+  -> torchrun ranks cooperate on one denoising/generation state
+  -> rank 0 writes/streams one output
+```
+
+The decisive metric is not "two GPUs were rented."
+The decisive metric is:
+
+```text
+speedup = fps_sp2 / fps_sp1
+```
+
+Decision gates:
+
+1. `speedup < 1.3x`: stop LongLive2 SP as a live path for now.
+2. `1.3x <= speedup < 1.6x`: continue only if quality/cost look unusually good.
+3. `speedup >= 1.6x`: LongLive2 SP becomes a serious live-runner candidate.
+
+## Hardware Constraint From The Paper
+
+The LongLive2 paper explicitly states that low-bit NVFP4 acceleration is hardware-dependent:
+
+1. NVFP4 acceleration needs Blackwell Tensor Cores and optimized kernels.
+2. GB200/B200-class hardware is the intended maximum-performance NVFP4 lane.
+3. A100, H100, and H200 do not have native hardware support for those optimized NVFP4 kernels.
+4. On non-Blackwell platforms, the paper's compensating strategy is SP inference.
+
+Operational consequence:
+
+```text
+A100/H100/H200 -> bf16_sp sequence-parallel path
+B200/GB200/RTX50-class -> nvfp4_s2 or nvfp4_s4 path
+```
+
+Do not start by trying `nvfp4_s2` on H200.
+That is exactly the mismatch the paper warns about.
+
+The repo now encodes this:
+
+1. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` rejects NVFP4 profile/runtime combinations targeting non-Blackwell GPUs unless explicitly overridden.
+2. `docs/video-longlive2-sp-streaming.md`, `docs/accelerate.md`, and `docs/vastai.md` all document the same boundary.
+
+## Current Budget Snapshot
+
+Last no-spend check: 2026-05-21.
+
+```text
+active Vast instances: []
+Vast credit: about $9.63
+current viable LongLive2 Hopper offer: H200 x2 at about $7.743/hour
+```
+
+Approximate H200 x2 compute cost:
+
+| Alive window | GPU cost estimate |
+| ---: | ---: |
+| 10 min | ~$1.29 |
+| 20 min | ~$2.58 |
+| 30 min | ~$3.87 |
+| 45 min | ~$5.81 |
+| 60 min | ~$7.74 |
+| 90 min | ~$11.61 |
+
+Budget conclusion:
+
+1. Enough for a controlled first BF16 SP smoke.
+2. Enough for smoke plus a minimal `sp1` vs `sp2` comparison only if setup is smooth.
+3. Not enough for an open-ended build/debug session.
+4. Not enough for a full Hopper smoke plus a Blackwell NVFP4 follow-up unless more credit is added or the first run is unusually fast.
+
+## Current Readiness
+
+Ready locally:
+
+1. LongLive2 setup/download/config/report/run scripts exist.
+2. `VIDEO_MODEL=longlive2` dispatch exists.
+3. Vast `--model longlive2` offer query exists.
+4. R2 publish/restore dispatch supports `--model longlive2`.
+5. EEG schedules can be compiled into LongLive2 prompt-block folders.
+6. NVFP4/Hopper mismatch is rejected early.
+7. `bash scripts/check.sh` passed after the latest guard update.
+8. `vastai show instances --raw` returned `[]` after the latest check.
+
+Not ready / not yet proven:
+
+1. No validated LongLive2 R2 tuple exists yet.
+2. No paid LongLive2 GPU render has been completed.
+3. No `sp1` vs `sp2` speedup has been measured.
+4. No persistent live LongLive2 EEG runner exists yet.
+5. No LongLive2 WebRTC/live-display path exists yet.
+
+This means the first paid run is a build/download/render smoke, not a fast tuple-restore smoke.
+
+## Live Run Ledger
+
+Append one row per meaningful attempt. Keep hostnames, IPs, SSH ports, tokens,
+and account identifiers out of this file.
+
+| Date | Phase | Status | GPU / offer | Runtime tag | Cost window | Local artifacts | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-05-21 | planning | ready for no-paid preflight | H200 x2 candidate `28747627` at last scan | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | target `<=45 min` | none yet | credit was about `$9.63`; active instances were `[]`; re-query before spending |
+| 2026-05-21 | no-spend validation | pass | none | n/a | `$0` | none | `bash scripts/check.sh` and `git diff --check` passed; `vastai show instances --raw` returned `[]` |
+
+## What Changed
+
+Use this section for short operator notes that explain why the plan changed.
+
+- 2026-05-21: Created the root paid-run control plan and expanded it into a live phase-by-phase checklist. Current next action is no-spend preflight, then one controlled BF16 SP paid smoke after explicit go.
+- 2026-05-21: Updated `AGENTS.md` to treat this file as the source-of-truth paid-run checklist, then recorded local validation and no-active-instance status.
+
+## Step-By-Step Checklist
+
+### Phase 0: Operator Safety Gate
+
+- [ ] Read `AGENTS.md`, this file, and `docs/video-longlive2-sp-streaming.md`.
+- [ ] Confirm the user explicitly approved paid Vast work for this run.
+- [ ] Confirm the requested run is LongLive2 BF16 SP, not Scope/LongLive and not MAGI.
+- [ ] Confirm the branch state is understood:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+git status --short --branch
+```
+
+- [ ] If the branch is ahead/behind `origin/main`, do not pull, push, or rebase unless that is the requested task.
+- [ ] Update the `Live Run Ledger` row with the current date and intended phase.
+
+Pass condition: no ambiguity about paid approval, branch state, or target model.
+
+Fail action: stop before provisioning.
+
+### Phase 1: No-Spend Local Validation
+
+- [ ] Run the repo validation gate:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash scripts/check.sh
+git diff --check
+```
+
+- [ ] Verify no paid instances are already running:
+
+```bash
+vastai show instances --raw
+```
+
+- [ ] Expected output for the active-instance check is `[]`.
+- [ ] If the Vast CLI user/balance command is broken, do not paste credentials into logs. Use the existing local credential path only if needed, and record only the numeric credit.
+- [ ] Update the `Live Run Ledger` with validation result and current credit.
+
+Pass condition: checks pass and active instances are `[]`.
+
+Fail action: fix local code/docs/checks first, or terminate unrelated paid instances only if they are known to belong to this workflow and the user has authorized cleanup.
+
+### Phase 2: Offline LongLive2 Dry Run
+
+- [ ] Generate an offline plan without GPU spending:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_longlive2_sp_offline.sh \
+  --dry-run \
+  --run-dir VideoDiffusion/.tmp/longlive2_dryrun_test \
+  --frames 16 \
+  --shot-prompt "A calm luminous ocean breathes slowly." \
+  --shot-prompt "A frantic neon tunnel accelerates." \
+  --shot-duration 1 \
+  --shot-duration 1
+```
+
+- [ ] Confirm these files exist:
+  - `VideoDiffusion/.tmp/longlive2_dryrun_test/longlive2_inference.yaml`
+  - `VideoDiffusion/.tmp/longlive2_dryrun_test/prompt_schedule/`
+  - `VideoDiffusion/.tmp/longlive2_dryrun_test/launch_plan.json`
+- [ ] Inspect the launch plan and confirm it uses `torchrun --nproc_per_node=2`.
+- [ ] Confirm the plan uses `sp_size=2` and `dp_size=1`.
+- [ ] Confirm prompt-block generation works for multiple shots.
+- [ ] Update the `Live Run Ledger` if dry-run behavior changed.
+
+Pass condition: dry-run artifacts are deterministic and the launch command is a two-rank SP run.
+
+Fail action: fix `VideoDiffusion/run_longlive2_sp_offline.sh` or `VideoDiffusion/longlive2_config.py` before paid work.
+
+### Phase 3: Hardware-Lane Guard Check
+
+- [ ] Confirm default paid wrapper plan:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --dry-run
+```
+
+- [ ] Confirm NVFP4 is rejected on a non-Blackwell runtime tag:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
+  --dry-run \
+  --profile nvfp4_s2 \
+  --runtime-tag longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm90_prebuild1
+```
+
+- [ ] Expected result: fail early with a Blackwell-only NVFP4 warning.
+- [ ] Confirm a Blackwell NVFP4 dry-run is allowed only with an SM100-style runtime tag and Blackwell GPU regex.
+- [ ] Update this file if the script guard behavior changes.
+
+Pass condition: H100/H200 cannot accidentally launch NVFP4.
+
+Fail action: patch `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` before spending.
+
+### Phase 4: Offer Query And Budget Gate
+
+- [ ] Re-query offers immediately before launch:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+python3 scripts/vast/query_video_offers.py \
+  --model longlive2 \
+  --gpu-name-regex 'H100|H200|GH200' \
+  --out-json VideoDiffusion/.tmp/current_longlive2_hopper_offer_scan.json \
+  --out-csv VideoDiffusion/.tmp/current_longlive2_hopper_offer_scan.csv
+```
+
+- [ ] Select deterministically:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+python3 scripts/vast/select_video_offer.py \
+  --scan-json VideoDiffusion/.tmp/current_longlive2_hopper_offer_scan.json \
+  --selection-goal cost \
+  --min-gpu-count 2 \
+  --max-gpu-count 2 \
+  --runtime-tag longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1 \
+  --print-env
+```
+
+- [ ] Record selected offer id, GPU model, GPU count, listed hourly rate, reliability, CUDA version, and machine id in the `Live Run Ledger`.
+- [ ] Confirm selected offer has exactly two usable GPUs.
+- [ ] Confirm selected offer is at or below `$8.00/hour` unless the user explicitly approved a higher cap.
+- [ ] Estimate cost before launch:
+
+```text
+estimated_cost = hourly_rate_usd * expected_minutes / 60
+```
+
+- [ ] Confirm current Vast credit leaves enough room for the planned window plus teardown margin.
+- [ ] If current credit is below about `$7.00`, stop.
+- [ ] If the best two-card Hopper offer is above `$8.00/hour`, stop or ask for a new cap.
+
+Pass condition: a two-GPU H100/H200/GH200 offer fits the budget window.
+
+Fail action: do not provision; update the ledger with the cheapest viable offer and reason for stopping.
+
+### Phase 5: First Paid BF16 SP Smoke
+
+- [ ] Launch only after Phases 0-4 pass:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
+  --create-instance \
+  --gpu-regex 'H100|H200|GH200' \
+  --min-gpu-count 2 \
+  --max-gpu-count 2 \
+  --max-dph 8.00 \
+  --profile bf16_sp \
+  --frames 32 \
+  --sp-size 2 \
+  --dp-size 1 \
+  --no-restore \
+  --download-fallback
+```
+
+- [ ] Start a timer as soon as the instance is created.
+- [ ] Record instance creation time in local notes or the ledger without host/IP details.
+- [ ] Watch for these phase markers or equivalent logs:
+  - instance provisioned;
+  - SSH resolved;
+  - repo synced;
+  - LongLive2 setup started;
+  - model download/cache started;
+  - `torchrun` started;
+  - rank 0 output path created;
+  - artifact pullback started;
+  - teardown started.
+- [ ] Cut the run if setup/build is clearly stuck.
+- [ ] Cut the run if no render path is reached by roughly minute `35-45`.
+- [ ] Do not switch to NVFP4 on H200.
+- [ ] Do not keep the instance alive just to preserve a loaded process.
+
+Pass condition: wrapper reaches `torchrun`, completes or fails with actionable logs, pulls artifacts when present, and tears down.
+
+Fail action: preserve logs locally, tear down, update this file and `docs/video-longlive2-sp-streaming.md` with the failure mode.
+
+### Phase 6: Runtime Telemetry To Capture
+
+- [ ] Record total alive time.
+- [ ] Record setup/build time.
+- [ ] Record model download/cache time.
+- [ ] Record model load time if available.
+- [ ] Record render wall-clock time.
+- [ ] Record frames generated.
+- [ ] Record effective FPS.
+- [ ] Record first-output latency if available.
+- [ ] Record GPU utilization for both GPUs.
+- [ ] Record VRAM usage for both GPUs.
+- [ ] Record whether logs prove `sp_size=2`.
+- [ ] Record whether exactly one MP4/output stream was produced.
+- [ ] Record final local artifact directory.
+
+Telemetry table to fill after the run:
+
+| Field | Value |
+| --- | --- |
+| run id | TBD |
+| instance alive minutes | TBD |
+| hourly rate | TBD |
+| estimated spend | TBD |
+| GPU model/count | TBD |
+| runtime tag | TBD |
+| profile | `bf16_sp` |
+| frames | `32` |
+| resolution | TBD |
+| sp_size / dp_size | `2 / 1` |
+| setup/build seconds | TBD |
+| download/cache seconds | TBD |
+| model-load seconds | TBD |
+| render seconds | TBD |
+| effective fps | TBD |
+| first-output seconds | TBD |
+| max VRAM GPU0/GPU1 | TBD |
+| average utilization GPU0/GPU1 | TBD |
+| output MP4 path | TBD |
+| local artifact path | TBD |
+| teardown verified | TBD |
+
+### Phase 7: Local Artifact Pullback And QA
+
+- [ ] Confirm the wrapper pulled artifacts to `/Users/xenochain/Downloads/<run_id>/` or another explicit local directory.
+- [ ] Confirm local artifacts include:
+  - MP4 or failure logs;
+  - config;
+  - launch plan;
+  - rank logs;
+  - telemetry;
+  - `run_report.json` or equivalent report.
+- [ ] If an MP4 exists, run media inspection:
+
+```bash
+ffprobe -v error -show_format -show_streams /absolute/path/to/output.mp4
+```
+
+- [ ] If an MP4 exists, sample frames/contact sheet using the existing report tooling where available.
+- [ ] Open at least one sampled frame locally and check whether it is nonblank and visually plausible.
+- [ ] If the output is static, corrupted, blank, or only a loading/error screen, mark the smoke as failed even if the process exited `0`.
+- [ ] Update `docs/video-longlive2-sp-streaming.md` with the artifact paths and QA result.
+- [ ] Update this file's `Live Run Ledger` and telemetry table.
+
+Pass condition: artifacts are local, inspectable, and sufficient to explain success/failure.
+
+Fail action: do not publish a tuple; document the failure and teardown status.
+
+### Phase 8: Teardown Verification
+
+- [ ] Verify there are no active paid instances:
+
+```bash
+vastai show instances --raw
+```
+
+- [ ] Expected output is `[]`.
+- [ ] If output is not `[]`, terminate only the instance(s) created for this workflow:
+
+```bash
+bash scripts/vast/terminate_instance.sh <INSTANCE_ID>
+vastai show instances --raw
+```
+
+- [ ] Record teardown status in the `Live Run Ledger`.
+- [ ] Final handoff must explicitly say whether teardown succeeded.
+
+Pass condition: `vastai show instances --raw` returns `[]`.
+
+Fail action: keep working until the paid instance is stopped, unless the user explicitly asks to keep it running.
+
+### Phase 9: Documentation Sync
+
+- [ ] Update this file with:
+  - final ledger row;
+  - telemetry table values;
+  - pass/fail verdict;
+  - exact local artifact directory;
+  - next recommended step.
+- [ ] Update `docs/video-longlive2-sp-streaming.md` with empirical results, failures, and any script behavior changes.
+- [ ] Update `docs/vastai.md` if provisioning, SSH, lifecycle, or wrapper behavior changed.
+- [ ] Update `docs/accelerate.md` if runtime tuple, cache, R2, NVFP4, or SP strategy changed.
+- [ ] Update `docs/cloudflare-r2.md` if a tuple was published or restore/publish layout changed.
+- [ ] Update `docs/budget-analysis.md` with actual spend and measured cost per output second.
+- [ ] Update `AGENTS.md` only if operator rules changed.
+- [ ] Run `bash scripts/check.sh` after doc/code changes.
+
+Pass condition: docs agree with code and with actual telemetry.
+
+Fail action: do not call the run complete until source-of-truth docs are synchronized.
+
+### Phase 10: Optional SP Benchmark
+
+Run this only if the first smoke succeeds quickly enough and budget remains.
+
+- [ ] Keep model, prompt, seed, resolution, frame count, GPU family, and runtime tag fixed.
+- [ ] Run baseline `sp_size=1`, `dp_size=1`, `nproc=1`.
+- [ ] Run target `sp_size=2`, `dp_size=1`, `nproc=2`.
+- [ ] Compute:
+
+```text
+speedup = fps_sp2 / fps_sp1
+```
+
+- [ ] Apply the decision gate:
+  - `<1.3x`: stop LongLive2 SP as a live path for now.
+  - `1.3x-1.6x`: keep as research/offline candidate.
+  - `>=1.6x`: proceed to persistent-runner design.
+- [ ] Update this file, `docs/video-longlive2-sp-streaming.md`, `docs/accelerate.md`, and `docs/budget-analysis.md`.
+
+### Phase 11: Optional R2 Publish
+
+Do this only after a successful render and artifact QA.
+
+- [ ] Confirm the run produced a usable LongLive2 output.
+- [ ] Confirm setup/build/model-cache artifacts are worth preserving.
+- [ ] Publish:
+
+```bash
+R2_PREFIX=neurodiffusion \
+bash VideoDiffusion/publish_r2_prebuild_model.sh \
+  --model longlive2 \
+  --runtime-tag longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1 \
+  --tiers longlive2-bf16-sp-hopper \
+  --include-weights \
+  --weights-compression none
+```
+
+- [ ] Confirm publish manifest exists.
+- [ ] Update `docs/cloudflare-r2.md`, `docs/accelerate.md`, and this file with the exact tuple tag and restore command.
+- [ ] Do not claim R2 preserves a live loaded model. It preserves env/cache/checkpoint artifacts only.
+
+## No-Paid Preflight
+
+Run before spending:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash scripts/check.sh
+git diff --check
+vastai show instances --raw
+```
+
+Generate and inspect a LongLive2 dry run:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_longlive2_sp_offline.sh \
+  --dry-run \
+  --run-dir VideoDiffusion/.tmp/longlive2_dryrun_test \
+  --frames 16 \
+  --shot-prompt "A calm luminous ocean breathes slowly." \
+  --shot-prompt "A frantic neon tunnel accelerates." \
+  --shot-duration 1 \
+  --shot-duration 1
+```
+
+Check that this writes:
+
+1. `VideoDiffusion/.tmp/longlive2_dryrun_test/longlive2_inference.yaml`
+2. `VideoDiffusion/.tmp/longlive2_dryrun_test/prompt_schedule/`
+3. `VideoDiffusion/.tmp/longlive2_dryrun_test/launch_plan.json`
+4. a `torchrun --nproc_per_node=2 inference_sp.py` command.
+
+Confirm the paid wrapper plan:
+
+```bash
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --dry-run
+```
+
+Confirm the guard rejects the wrong hardware lane:
+
+```bash
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
+  --dry-run \
+  --profile nvfp4_s2 \
+  --runtime-tag longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm90_prebuild1
+```
+
+Expected result: fail early with a Blackwell-only NVFP4 warning.
+
+## Offer Selection
+
+No-spend query:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+python3 scripts/vast/query_video_offers.py \
+  --model longlive2 \
+  --gpu-name-regex 'H100|H200|GH200' \
+  --out-json VideoDiffusion/.tmp/current_longlive2_hopper_offer_scan.json \
+  --out-csv VideoDiffusion/.tmp/current_longlive2_hopper_offer_scan.csv
+```
+
+No-spend deterministic selection:
+
+```bash
+python3 scripts/vast/select_video_offer.py \
+  --scan-json VideoDiffusion/.tmp/current_longlive2_hopper_offer_scan.json \
+  --selection-goal cost \
+  --min-gpu-count 2 \
+  --max-gpu-count 2 \
+  --runtime-tag longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1 \
+  --print-env
+```
+
+Current last-selected candidate:
+
+```text
+offer_id: 28747627
+gpu: H200 x2
+hourly_rate_usd: about 7.7433
+gpu_ram: about 143 GB per GPU
+cuda_max_good: 12.8
+```
+
+Re-query immediately before launch because Vast offers are dynamic.
+
+## First Paid Run: Controlled BF16 SP Smoke
+
+Use this only after explicit approval to spend.
+
+Because no validated LongLive2 tuple exists yet, avoid a doomed restore-only run.
+Use the build/download fallback path:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
+  --create-instance \
+  --gpu-regex 'H100|H200|GH200' \
+  --min-gpu-count 2 \
+  --max-gpu-count 2 \
+  --max-dph 8.00 \
+  --profile bf16_sp \
+  --frames 32 \
+  --sp-size 2 \
+  --dp-size 1 \
+  --no-restore \
+  --download-fallback
+```
+
+Why `frames 32` first:
+
+1. It is large enough to prove config, ranks, load, and save path.
+2. It limits render time while the environment is unproven.
+3. If this succeeds quickly, rerun with `--frames 128` on the same instance pattern or a later restored tuple.
+
+Hard budget discipline:
+
+1. Abort if setup/build is clearly stuck.
+2. Abort if no render path is reached by roughly minute `35-45`.
+3. Do not chase NVFP4 on H200.
+4. Do not keep the instance alive to preserve a loaded process.
+5. Pull artifacts before teardown.
+
+Expected wrapper behavior:
+
+1. select/provision paid Vast instance;
+2. resolve SSH;
+3. sync repo;
+4. clone/build LongLive2;
+5. download needed model artifacts;
+6. run `torchrun` through `run_longlive2_sp_offline.sh`;
+7. pull artifacts to `/Users/xenochain/Downloads/<run_id>/`;
+8. teardown by default.
+
+## Acceptance Criteria For First Smoke
+
+A first smoke passes only if all are true:
+
+1. `torchrun` starts two ranks.
+2. logs show SP/Ulysses mode with effective `sp_size=2`.
+3. both GPUs have nontrivial utilization in telemetry.
+4. exactly one output MP4 stream is written.
+5. the MP4, config, logs, telemetry, and report are pulled to the local machine.
+6. report includes `ffprobe` metadata when local media tools can inspect it.
+7. sampled frame/contact sheet exists when output is available.
+8. `vastai show instances --raw` returns `[]` after teardown.
+
+## Second Paid Step: Decisive SP Benchmark
+
+Only run this if first smoke succeeds fast enough.
+
+Compare:
+
+```text
+same prompt
+same seed
+same resolution
+same frame count
+same GPU family
+
+A: sp_size=1, dp_size=1, nproc=1
+B: sp_size=2, dp_size=1, nproc=2
+```
+
+Record:
+
+1. wall-clock setup time;
+2. model load time;
+3. render wall-clock;
+4. frames/sec;
+5. first output time if available;
+6. GPU utilization and VRAM;
+7. MP4 duration/resolution/frame count;
+8. contact sheet quality;
+9. cost per generated second;
+10. cost per realtime frame.
+
+Decision:
+
+1. `<1.3x`: stop LongLive2 SP as a live path for now.
+2. `1.3x-1.6x`: keep as research/offline candidate.
+3. `>=1.6x`: proceed to persistent-runner design.
+
+## R2 Publish Rule
+
+Publish a LongLive2 tuple only after a successful render.
+
+Persist:
+
+1. Python env archive;
+2. built extensions;
+3. wheel/cache artifacts;
+4. model/checkpoint cache;
+5. manifest;
+6. smoke report.
+
+Do not publish a canonical tuple from a failed build or import-only state.
+
+Suggested publish shape after a successful BF16 SP render:
+
+```bash
+R2_PREFIX=neurodiffusion \
+bash VideoDiffusion/publish_r2_prebuild_model.sh \
+  --model longlive2 \
+  --runtime-tag longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1 \
+  --tiers longlive2-bf16-sp-hopper \
+  --include-weights \
+  --weights-compression none
+```
+
+## Later Blackwell NVFP4 Lane
+
+Do this only after BF16 SP is proven, or after explicit approval to target Blackwell directly.
+
+```bash
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
+  --create-instance \
+  --gpu-regex 'B200|GB200|RTX.?5090' \
+  --runtime-tag longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1 \
+  --profile nvfp4_s2 \
+  --frames 384
+```
+
+This is not the current budget-safe next step.
+
+## Live EEG Runner Comes Later
+
+Do not build a persistent LongLive2 live runner until the SP benchmark justifies it.
+
+Future live architecture:
+
+```text
+torchrun starts persistent ranks
+rank 0 owns local control server
+all ranks keep LongLive2 loaded
+EEG loop sends stable state events
+rank 0 schedules prompt change at block boundary
+ranks synchronize prompt/context update
+KV-recache-style transition handles prompt change
+rank 0 streams/saves output
+```
+
+The current live fallback remains Scope + LongLive because it already has OSC and WebRTC.
+
+## Ready-To-Run Checklist
+
+Before saying "go", confirm:
+
+1. `git status` is understood. Current local branch may be ahead/behind `origin/main`; do not push blindly.
+2. `bash scripts/check.sh` passes.
+3. `vastai show instances --raw` returns `[]`.
+4. Vast credit is still at least about `$7.00`; preferably `$9.00+`.
+5. a current H100/H200 x2 offer exists at `<= $8.00/h`.
+6. the run uses `bf16_sp`, not NVFP4, on H100/H200.
+7. the run uses `--no-restore --download-fallback` until a real LongLive2 tuple exists.
+8. the operator watches the run and cuts it if the setup is not progressing within the budget window.
+
+If those conditions hold, the repo is ready for the first controlled paid BF16 SP smoke.

@@ -12,6 +12,7 @@ This repository is operator-first. Scripts and docs should make GPU work determi
 
 ## Canonical Sources
 
+- `longlive2plan.md` — root LongLive2 paid-run control plan, live checklist, budget envelope, telemetry ledger, and go/no-go criteria.
 - `docs/vastai.md` — current Vast provisioning, SSH, lifecycle, and teardown source of truth.
 - `docs/video-magi1-streaming.md` — MAGI-1 setup, weights, smoke, stream, prompt, and validation source of truth.
 - `docs/video-magi1-observations.md` — empirical MAGI outcomes, failures, fixes, and tuning notes.
@@ -122,7 +123,8 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - LongLive2 is experimental and separate from Daydream Scope + LongLive.
 - Use it only for the one-stream multi-GPU path where multiple GPUs cooperate on one video generation state.
 - Do not present a two-GPU Scope host as a LongLive2 or sequence-parallel result.
-- Source-of-truth plan: `docs/video-longlive2-sp-streaming.md`.
+- Source-of-truth implementation doc: `docs/video-longlive2-sp-streaming.md`.
+- Source-of-truth paid-run checklist: `longlive2plan.md`. Before any paid LongLive2 run, follow and update that checklist phase by phase.
 - Entry points:
   - `VideoDiffusion/setup_longlive2.sh`
   - `VideoDiffusion/download_longlive2_models.sh`
@@ -139,6 +141,7 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - NVFP4 acceleration is Blackwell-only per the LongLive2 paper limitation. On A100/H100/H200, use `bf16_sp` sequence-parallel inference as the compensation path unless intentionally debugging NVFP4/FourOverSix.
 - The upstream SP script disables `kv_quant` under Ulysses SP today; do not claim SP+KV-quant speedups unless a real run proves them.
 - A valid LongLive2 two-card run must show one output stream plus per-GPU telemetry proving both cards were active.
+- No validated LongLive2 R2 tuple exists until a real render succeeds and is published. Use `--no-restore --download-fallback` for the first paid smoke unless `longlive2plan.md` documents a later validated tuple.
 - R2 may cache the LongLive2 env, built extensions, checkpoints, and generated merged/materialized checkpoints; it cannot preserve a live NCCL process group or GPU-resident model.
 - EEG integration comes after distributed inference is proven: offline prompt schedule first, persistent runner second, live output third.
 - Paid LongLive2 tests must use explicit two-GPU selection and teardown by default.

@@ -431,10 +431,13 @@ LongLive2 R2 cannot persist:
 
 First publish rule:
 
-1. local plumbing exists, but do not publish a canonical LongLive2 tuple from an unvalidated build;
+1. local plumbing exists, but do not publish a LongLive2 tuple from an unvalidated build and do not call any tuple canonical until restore validation passes;
 2. first prove import checks plus a minimal render on the intended GPU architecture;
 3. publish before teardown only if the environment is reusable;
-4. record tuple size, restore time, render time, spend, and final teardown status in `docs/video-longlive2-sp-streaming.md` or a future observations file.
+4. treat publication and restore validation as separate states:
+   - `published_tuple`: env/cache/checkpoints were uploaded after a successful render;
+   - `validated_restore_tuple`: a fresh instance restored that tuple and produced a new render;
+5. record tuple size, restore time, render time, spend, and final teardown status in `docs/video-longlive2-sp-streaming.md` or a future observations file.
 
 LongLive2 restore pattern after a tuple exists:
 

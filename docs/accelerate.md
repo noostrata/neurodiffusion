@@ -135,23 +135,27 @@ Implemented local plumbing:
 2. `VideoDiffusion/download_longlive2_models.sh` caches BF16, NVFP4 S4, or NVFP4 S2 checkpoints.
 3. `VideoDiffusion/longlive2_config.py` generates SP configs and converts EEG schedule CSVs into upstream multi-shot prompt folders.
 4. `VideoDiffusion/run_longlive2_sp_offline.sh` creates a launch plan, starts `torchrun`, records GPU telemetry, and invokes report/QA generation.
-5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` wraps two-GPU Vast selection, R2 restore, run, local pullback, and teardown.
-6. `VideoDiffusion/longlive2_run_report.py` parses SP logs, GPU telemetry, ffprobe metadata, and artifact QA.
+5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` wraps two-GPU Vast selection, credit/budget checks, R2 restore, run, local pullback, phase/cost reports, and teardown.
+6. `VideoDiffusion/run_longlive2_sp_benchmark.sh` runs same-prompt/same-seed `sp_size=1` vs `sp_size=2` comparisons and writes `speedup_sp2_over_sp1`.
+7. `VideoDiffusion/longlive2_run_report.py` parses SP logs, GPU telemetry, ffprobe metadata, artifact QA, and wrapper phase markers.
 
 R2 fast path:
 
 1. cache the env, built extensions, wheelhouse, HF checkpoints, and merged/materialized checkpoints;
 2. do not try to cache a live NCCL process group or GPU-loaded model;
 3. publish only after a minimal render proves the tuple imports and runs;
-4. for first paid builds, publish before teardown if the env is reusable.
+4. do not call a published tuple validated until a fresh restore run produces a new render;
+5. for first paid builds, publish before teardown if the env is reusable.
 
 Validation order:
 
 1. no-cost config/report selftests;
 2. BF16 two-GPU offline smoke;
-3. one-GPU vs two-GPU speedup comparison;
-4. NVFP4 S2 import/render smoke;
-5. live runner and EEG bridge only after useful distributed speedup is measured.
+3. publish the BF16 tuple if the first render proves it is reusable;
+4. validate BF16 tuple restore on a fresh instance;
+5. one-GPU vs two-GPU speedup comparison;
+6. NVFP4 S2 import/render smoke;
+7. live runner and EEG bridge only after useful distributed speedup is measured.
 
 See `docs/video-longlive2-sp-streaming.md` for the full plan.
 

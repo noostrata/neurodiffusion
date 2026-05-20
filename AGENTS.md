@@ -131,6 +131,7 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
   - `VideoDiffusion/longlive2_config.py`
   - `VideoDiffusion/run_longlive2_sp_offline.sh`
   - `VideoDiffusion/run_longlive2_sp_vast_smoke.sh`
+  - `VideoDiffusion/run_longlive2_sp_benchmark.sh`
   - `VideoDiffusion/longlive2_run_report.py`
 - First target is BF16 Ulysses sequence-parallel inference through upstream `inference_sp.py`, not live EEG.
 - First two-card target uses `sp_size=2`, `dp_size=1`, and `torchrun --nproc_per_node=2`.
@@ -141,8 +142,10 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - NVFP4 acceleration is Blackwell-only per the LongLive2 paper limitation. On A100/H100/H200, use `bf16_sp` sequence-parallel inference as the compensation path unless intentionally debugging NVFP4/FourOverSix.
 - The upstream SP script disables `kv_quant` under Ulysses SP today; do not claim SP+KV-quant speedups unless a real run proves them.
 - A valid LongLive2 two-card run must show one output stream plus per-GPU telemetry proving both cards were active.
-- No validated LongLive2 R2 tuple exists until a real render succeeds and is published. Use `--no-restore --download-fallback` for the first paid smoke unless `longlive2plan.md` documents a later validated tuple.
+- No validated LongLive2 R2 tuple exists until a real render succeeds, the tuple is published, and a fresh restore run proves it. Use `--no-restore --download-fallback` for the first paid smoke unless `longlive2plan.md` documents a later validated restore tuple.
 - R2 may cache the LongLive2 env, built extensions, checkpoints, and generated merged/materialized checkpoints; it cannot preserve a live NCCL process group or GPU-resident model.
+- Run `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` before paid LongLive2 work; it should pass local checks, dry-run, offer selection, active-instance, credit, and budget gates.
+- First LongLive2 paid smoke defaults should stay small and explicit: `480x832`, `32` frames, `sp_size=2`, `dp_size=1`, `seed=0`, max-alive around `45 min`, and failure-safe artifact pullback enabled by default.
 - EEG integration comes after distributed inference is proven: offline prompt schedule first, persistent runner second, live output third.
 - Paid LongLive2 tests must use explicit two-GPU selection and teardown by default.
 - Do not promote LongLive2 as the default realtime path until it beats the one-GPU Scope baseline on speed, cost, and visual acceptability.

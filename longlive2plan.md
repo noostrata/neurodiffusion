@@ -138,6 +138,11 @@ Ready locally:
 6. NVFP4/Hopper mismatch is rejected early.
 7. `bash scripts/check.sh` passed after the latest guard update.
 8. `vastai show instances --raw` returned `[]` after the latest check.
+9. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` now runs the no-spend gate, offer selection, and credit/budget check.
+10. The paid wrapper now writes sanitized `selected_offer.json`, `credit_check.json`, `budget_plan.json`, `phase_markers.log`, and `phase_report.json`.
+11. The paid wrapper now tries best-effort artifact pullback before teardown even when setup/download/render fails.
+12. The paid wrapper now enforces a local max-alive timeout around remote SSH phases.
+13. `VideoDiffusion/run_longlive2_sp_benchmark.sh` now provides the same-prompt/same-seed `sp1` vs `sp2` speedup comparison.
 
 Not ready / not yet proven:
 
@@ -158,6 +163,8 @@ and account identifiers out of this file.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-05-21 | planning | ready for no-paid preflight | H200 x2 candidate `28747627` at last scan | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | target `<=45 min` | none yet | credit was about `$9.63`; active instances were `[]`; re-query before spending |
 | 2026-05-21 | no-spend validation | pass | none | n/a | `$0` | none | `bash scripts/check.sh` and `git diff --check` passed; `vastai show instances --raw` returned `[]` |
+| 2026-05-21 | wrapper preflight | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T224724Z/` | credit `$9.626478`, required `$7.00`, active instances `[]`; no paid instance created |
+| 2026-05-21 | wrapper preflight | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T224854Z/` | rerun after final timeout/docs patch; credit `$9.626478`, required `$7.00`, active instances `[]`; no paid instance created |
 
 ## What Changed
 
@@ -165,6 +172,7 @@ Use this section for short operator notes that explain why the plan changed.
 
 - 2026-05-21: Created the root paid-run control plan and expanded it into a live phase-by-phase checklist. Current next action is no-spend preflight, then one controlled BF16 SP paid smoke after explicit go.
 - 2026-05-21: Updated `AGENTS.md` to treat this file as the source-of-truth paid-run checklist, then recorded local validation and no-active-instance status.
+- 2026-05-21: Added code guardrails before paid launch: wrapper `--preflight`, failure-safe artifact pullback, phase/cost report generation, selected-offer/credit/budget artifacts, max-alive timeout, lower first-smoke geometry, seed plumbing, and a same-seed SP benchmark wrapper.
 
 ## Step-By-Step Checklist
 
@@ -188,6 +196,19 @@ Pass condition: no ambiguity about paid approval, branch state, or target model.
 Fail action: stop before provisioning.
 
 ### Phase 1: No-Spend Local Validation
+
+- [ ] Prefer the one-command preflight:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight
+```
+
+- [ ] Confirm preflight writes:
+  - `/Users/xenochain/Downloads/<run_id>/selected_offer.json`
+  - `/Users/xenochain/Downloads/<run_id>/credit_check.json`
+  - `/Users/xenochain/Downloads/<run_id>/budget_plan.json`
+  - `/Users/xenochain/Downloads/<run_id>/phase_report.json`
 
 - [ ] Run the repo validation gate:
 
@@ -320,14 +341,22 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --create-instance \
   --gpu-regex 'H100|H200|GH200' \
   --min-gpu-count 2 \
-  --max-gpu-count 2 \
-  --max-dph 8.00 \
-  --profile bf16_sp \
-  --frames 32 \
-  --sp-size 2 \
-  --dp-size 1 \
-  --no-restore \
-  --download-fallback
+    --max-gpu-count 2 \
+    --max-dph 8.00 \
+    --profile bf16_sp \
+    --height 480 \
+    --width 832 \
+    --frames 32 \
+    --sp-size 2 \
+    --dp-size 1 \
+    --seed 0 \
+    --max-alive-min 45 \
+    --budget-estimate-min 45 \
+    --min-credit-usd 7.00 \
+    --min-credit-reserve-usd 1.00 \
+    --max-estimated-spend-usd 6.00 \
+    --no-restore \
+    --download-fallback
 ```
 
 - [ ] Start a timer as soon as the instance is created.
@@ -366,6 +395,7 @@ Fail action: preserve logs locally, tear down, update this file and `docs/video-
 - [ ] Record whether logs prove `sp_size=2`.
 - [ ] Record whether exactly one MP4/output stream was produced.
 - [ ] Record final local artifact directory.
+- [ ] Preserve `phase_report.json`, `selected_offer.json`, `credit_check.json`, and `budget_plan.json` with the rest of the artifacts.
 
 Telemetry table to fill after the run:
 
@@ -466,6 +496,19 @@ Fail action: do not call the run complete until source-of-truth docs are synchro
 
 Run this only if the first smoke succeeds quickly enough and budget remains.
 
+- [ ] Use the same-instance benchmark wrapper when already attached to a prepared LongLive2 runtime:
+
+```bash
+cd /workspace/neurodiffusion
+bash VideoDiffusion/run_longlive2_sp_benchmark.sh \
+  --profile bf16_sp \
+  --height 480 \
+  --width 832 \
+  --frames 32 \
+  --seed 0 \
+  --prompt "A reactive neon tunnel breathes with smooth cinematic motion."
+```
+
 - [ ] Keep model, prompt, seed, resolution, frame count, GPU family, and runtime tag fixed.
 - [ ] Run baseline `sp_size=1`, `dp_size=1`, `nproc=1`.
 - [ ] Run target `sp_size=2`, `dp_size=1`, `nproc=2`.
@@ -484,6 +527,11 @@ speedup = fps_sp2 / fps_sp1
 ### Phase 11: Optional R2 Publish
 
 Do this only after a successful render and artifact QA.
+
+Publishing is not the same as restore validation:
+
+1. `published_tuple`: env/cache/checkpoints were uploaded after a successful render.
+2. `validated_restore_tuple`: a fresh instance restored that tuple and produced a new render.
 
 - [ ] Confirm the run produced a usable LongLive2 output.
 - [ ] Confirm setup/build/model-cache artifacts are worth preserving.
@@ -605,9 +653,17 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --max-gpu-count 2 \
   --max-dph 8.00 \
   --profile bf16_sp \
+  --height 480 \
+  --width 832 \
   --frames 32 \
   --sp-size 2 \
   --dp-size 1 \
+  --seed 0 \
+  --max-alive-min 45 \
+  --budget-estimate-min 45 \
+  --min-credit-usd 7.00 \
+  --min-credit-reserve-usd 1.00 \
+  --max-estimated-spend-usd 6.00 \
   --no-restore \
   --download-fallback
 ```
@@ -690,6 +746,12 @@ Decision:
 
 Publish a LongLive2 tuple only after a successful render.
 
+Do not mark that tuple as validated until a later fresh restore run proves it
+can restore and render. The states are separate:
+
+1. `published_tuple`: env/cache/checkpoints were uploaded after a successful render.
+2. `validated_restore_tuple`: a fresh instance restored the tuple and produced a new render.
+
 Persist:
 
 1. Python env archive;
@@ -753,11 +815,13 @@ Before saying "go", confirm:
 
 1. `git status` is understood. Current local branch may be ahead/behind `origin/main`; do not push blindly.
 2. `bash scripts/check.sh` passes.
-3. `vastai show instances --raw` returns `[]`.
-4. Vast credit is still at least about `$7.00`; preferably `$9.00+`.
-5. a current H100/H200 x2 offer exists at `<= $8.00/h`.
-6. the run uses `bf16_sp`, not NVFP4, on H100/H200.
-7. the run uses `--no-restore --download-fallback` until a real LongLive2 tuple exists.
-8. the operator watches the run and cuts it if the setup is not progressing within the budget window.
+3. `bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` passes.
+4. `vastai show instances --raw` returns `[]`.
+5. Vast credit is still at least about `$7.00`; preferably `$9.00+`.
+6. a current H100/H200 x2 offer exists at `<= $8.00/h`.
+7. the run uses `bf16_sp`, not NVFP4, on H100/H200.
+8. the run uses `--no-restore --download-fallback` until a validated LongLive2 restore tuple exists.
+9. the run uses explicit modest first-smoke geometry, currently `480x832` and `32` frames.
+10. the wrapper max-alive/budget guards are enabled and the operator watches for obvious stuck setup.
 
 If those conditions hold, the repo is ready for the first controlled paid BF16 SP smoke.

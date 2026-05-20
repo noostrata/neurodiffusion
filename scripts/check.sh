@@ -42,8 +42,15 @@ python3 -m py_compile "${python_files[@]}"
 echo "[check] provider offer selftests"
 python3 scripts/prime/selftest_offer_common.py
 python3 scripts/vast/selftest_video_offers.py
+python3 scripts/vast/show_credit.py --selftest
 python3 VideoDiffusion/longlive2_config.py selftest
 python3 VideoDiffusion/longlive2_run_report.py selftest
+bash VideoDiffusion/run_longlive2_sp_benchmark.sh \
+  --dry-run \
+  --run-dir VideoDiffusion/.tmp/check_longlive2_sp_benchmark \
+  --height 320 \
+  --width 576 \
+  --frames 16
 python3 VideoDiffusion/scope_run_report.py selftest
 python3 VideoDiffusion/run_scope_longlive_vast_matrix.py --selftest
 

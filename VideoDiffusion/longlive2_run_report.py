@@ -18,12 +18,89 @@ from typing import Any
 SAVED_RE = re.compile(r"(?:Saved|saved|write|wrote)[^:\n]*:\s*(\S+\.mp4)")
 ERROR_RE = re.compile(r"(Traceback|RuntimeError|CUDA out of memory|Exception|error:)", re.IGNORECASE)
 SP_RE = re.compile(r"(Ulysses|sequence parallel|\bsp_size\b|\[SP\])", re.IGNORECASE)
+PHASE_RE = re.compile(r"^\[longlive2-vast-ts\]\s+(\S+)\s+(\S+)\s*$")
 
 
 def load_json(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def parse_iso_utc(raw: str) -> datetime:
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(raw)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def parse_phase_markers(path: Path) -> dict[str, Any]:
+    markers: list[dict[str, Any]] = []
+    if not path.is_file():
+        return {
+            "phase_log": str(path),
+            "markers": markers,
+            "durations_s": {},
+            "total_elapsed_s": None,
+            "error": "phase log missing",
+        }
+
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        match = PHASE_RE.match(line.strip())
+        if not match:
+            continue
+        ts_raw, phase = match.groups()
+        try:
+            ts = parse_iso_utc(ts_raw)
+        except ValueError:
+            continue
+        markers.append({"ts": ts.isoformat().replace("+00:00", "Z"), "phase": phase})
+
+    by_phase = {row["phase"]: parse_iso_utc(row["ts"]) for row in markers}
+    durations: dict[str, float] = {}
+    for phase, start_ts in by_phase.items():
+        if not phase.endswith("_start"):
+            continue
+        base = phase[: -len("_start")]
+        candidates = [f"{base}_done", f"{base}_end", f"{base}_failed"]
+        end_phase = next((candidate for candidate in candidates if candidate in by_phase), "")
+        if end_phase:
+            durations[base] = round((by_phase[end_phase] - start_ts).total_seconds(), 3)
+
+    total_elapsed_s = None
+    if len(markers) >= 2:
+        total_elapsed_s = round(
+            (parse_iso_utc(markers[-1]["ts"]) - parse_iso_utc(markers[0]["ts"])).total_seconds(),
+            3,
+        )
+
+    return {
+        "phase_log": str(path),
+        "markers": markers,
+        "durations_s": durations,
+        "total_elapsed_s": total_elapsed_s,
+        "error": "",
+    }
+
+
+def _selected_offer_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    offer = payload.get("selected_offer")
+    if isinstance(offer, dict):
+        return offer
+    if "offer_id" in payload:
+        return payload
+    return {}
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        if value in (None, ""):
+            return None
+        return float(value)
+    except Exception:
+        return None
 
 
 def run_json_command(cmd: list[str]) -> dict[str, Any]:
@@ -299,6 +376,56 @@ def write_report(args: argparse.Namespace) -> int:
     return 0 if acceptance["passed"] else 1
 
 
+def write_phase_report(args: argparse.Namespace) -> int:
+    phase_log = Path(args.phase_log).expanduser().resolve()
+    out_path = Path(args.out).expanduser().resolve()
+    selected_offer_payload = load_json(Path(args.selected_offer_json).expanduser()) if args.selected_offer_json else {}
+    credit_payload = load_json(Path(args.credit_json).expanduser()) if args.credit_json else {}
+    offer = _selected_offer_from_payload(selected_offer_payload)
+    dph_total = _float_or_none(offer.get("dph_total"))
+    phase_report = parse_phase_markers(phase_log)
+    total_elapsed_s = _float_or_none(phase_report.get("total_elapsed_s"))
+    observed_spend_usd = None
+    if dph_total is not None and total_elapsed_s is not None:
+        observed_spend_usd = round(dph_total * total_elapsed_s / 3600.0, 6)
+    planned_spend_usd = None
+    if dph_total is not None and args.budget_estimate_min > 0:
+        planned_spend_usd = round(dph_total * args.budget_estimate_min / 60.0, 6)
+
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "run_id": args.run_id,
+        "exit_code": args.exit_code,
+        "local_out_dir": args.local_out_dir,
+        "phase_report": phase_report,
+        "selected_offer": {
+            "offer_id": offer.get("offer_id"),
+            "gpu_name": offer.get("gpu_name"),
+            "num_gpus": offer.get("num_gpus"),
+            "dph_total": offer.get("dph_total"),
+            "reliability": offer.get("reliability"),
+            "cuda_max_good": offer.get("cuda_max_good"),
+        },
+        "credit_check": {
+            "checked": credit_payload.get("checked"),
+            "credit_usd": credit_payload.get("credit_usd"),
+            "requirements": credit_payload.get("requirements", {}),
+            "error": credit_payload.get("error", ""),
+        },
+        "budget": {
+            "max_alive_min": args.max_alive_min,
+            "budget_estimate_min": args.budget_estimate_min,
+            "planned_spend_usd": planned_spend_usd,
+            "observed_spend_usd_from_phase_elapsed": observed_spend_usd,
+            "note": "Observed spend is estimated from first to last wrapper phase marker and selected dph_total.",
+        },
+    }
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"[longlive2-phase-report] report={out_path}")
+    return 0
+
+
 def command_selftest() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -332,6 +459,36 @@ def command_selftest() -> int:
         assert report["launch_plan"]["nproc_per_node"] == 2
         assert len(report["gpu_telemetry"]["gpus"]) == 2
         assert report["acceptance"]["passed"]
+        phase_log = run_dir / "phase_markers.log"
+        phase_log.write_text(
+            "[longlive2-vast-ts] 2026-05-21T00:00:00Z setup_start\n"
+            "[longlive2-vast-ts] 2026-05-21T00:00:05Z setup_done\n"
+            "[longlive2-vast-ts] 2026-05-21T00:00:05Z longlive2_run_start\n"
+            "[longlive2-vast-ts] 2026-05-21T00:00:17Z longlive2_run_done\n",
+            encoding="utf-8",
+        )
+        selected = run_dir / "selected_offer.json"
+        selected.write_text(
+            json.dumps({"selected_offer": {"offer_id": "1", "gpu_name": "H200", "num_gpus": 2, "dph_total": 7.2}})
+            + "\n",
+            encoding="utf-8",
+        )
+        phase_args = argparse.Namespace(
+            phase_log=str(phase_log),
+            out=str(run_dir / "phase_report.json"),
+            run_id="selftest",
+            exit_code=0,
+            local_out_dir=str(run_dir),
+            selected_offer_json=str(selected),
+            credit_json="",
+            max_alive_min=45.0,
+            budget_estimate_min=30.0,
+        )
+        assert write_phase_report(phase_args) == 0
+        phase_report = load_json(run_dir / "phase_report.json")
+        assert phase_report["phase_report"]["durations_s"]["setup"] == 5.0
+        assert phase_report["phase_report"]["durations_s"]["longlive2_run"] == 12.0
+        assert phase_report["budget"]["planned_spend_usd"] == 3.6
     print("[longlive2-report-selftest] ok")
     return 0
 
@@ -348,6 +505,18 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--allow-missing-video", action="store_true")
     report.add_argument("--allow-missing-telemetry", action="store_true")
     report.set_defaults(func=write_report)
+
+    phase = sub.add_parser("phase-report", help="Write a wrapper phase/cost report")
+    phase.add_argument("--phase-log", required=True)
+    phase.add_argument("--out", required=True)
+    phase.add_argument("--run-id", required=True)
+    phase.add_argument("--exit-code", type=int, default=0)
+    phase.add_argument("--local-out-dir", default="")
+    phase.add_argument("--selected-offer-json", default="")
+    phase.add_argument("--credit-json", default="")
+    phase.add_argument("--max-alive-min", type=float, default=0.0)
+    phase.add_argument("--budget-estimate-min", type=float, default=0.0)
+    phase.set_defaults(func=write_phase_report)
 
     selftest = sub.add_parser("selftest", help="Run no-cost report checks")
     selftest.set_defaults(func=lambda _args: command_selftest())

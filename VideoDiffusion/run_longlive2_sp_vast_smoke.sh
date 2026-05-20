@@ -14,6 +14,12 @@ R2_ENV_FILE="${R2_ENV_FILE:-/Users/xenochain/agents/secrets/r2_full_access.env}"
 R2_PREFIX="${R2_PREFIX:-neurodiffusion}"
 LOCAL_OUT_DIR="${LONGLIVE2_VAST_LOCAL_OUT_DIR:-${HOME}/Downloads/${RUN_ID}}"
 PHASE_LOG="${LONGLIVE2_VAST_PHASE_LOG:-${LOCAL_OUT_DIR}/phase_markers.log}"
+PHASE_REPORT="${LONGLIVE2_VAST_PHASE_REPORT:-${LOCAL_OUT_DIR}/phase_report.json}"
+SELECTED_OFFER_LOCAL_JSON="${LONGLIVE2_VAST_SELECTED_OFFER_JSON:-${LOCAL_OUT_DIR}/selected_offer.json}"
+OFFER_SCAN_LOCAL_JSON="${LONGLIVE2_VAST_OFFER_SCAN_JSON:-${LOCAL_OUT_DIR}/offer_scan.json}"
+OFFER_SCAN_LOCAL_CSV="${LONGLIVE2_VAST_OFFER_SCAN_CSV:-${LOCAL_OUT_DIR}/offer_scan.csv}"
+CREDIT_CHECK_JSON="${LONGLIVE2_VAST_CREDIT_JSON:-${LOCAL_OUT_DIR}/credit_check.json}"
+BUDGET_PLAN_JSON="${LONGLIVE2_VAST_BUDGET_PLAN_JSON:-${LOCAL_OUT_DIR}/budget_plan.json}"
 
 CREATE_INSTANCE="${LONGLIVE2_VAST_CREATE_INSTANCE:-0}"
 KEEP_INSTANCE="${LONGLIVE2_VAST_KEEP_INSTANCE:-0}"
@@ -29,14 +35,22 @@ VAST_DISK_GB="${VAST_DISK_GB:-300}"
 VAST_IMAGE="${VAST_IMAGE:-pytorch/pytorch:2.8.0-cuda12.8-cudnn9-devel}"
 VAST_ENV="${VAST_ENV:-}"
 VAST_LABEL="${VAST_LABEL:-neurodiffusion_${RUN_ID}}"
+PREFLIGHT="${LONGLIVE2_VAST_PREFLIGHT:-0}"
+MAX_ALIVE_MIN="${LONGLIVE2_VAST_MAX_ALIVE_MIN:-45}"
+BUDGET_ESTIMATE_MIN="${LONGLIVE2_VAST_BUDGET_ESTIMATE_MIN:-45}"
+MIN_CREDIT_USD="${LONGLIVE2_VAST_MIN_CREDIT_USD:-7.00}"
+MIN_CREDIT_RESERVE_USD="${LONGLIVE2_VAST_MIN_CREDIT_RESERVE_USD:-1.00}"
+MAX_ESTIMATED_SPEND_USD="${LONGLIVE2_VAST_MAX_ESTIMATED_SPEND_USD:-6.00}"
+REQUIRE_CREDIT_CHECK="${LONGLIVE2_VAST_REQUIRE_CREDIT_CHECK:-1}"
 
 LONGLIVE2_PROFILE="${LONGLIVE2_PROFILE:-bf16_sp}"
-LONGLIVE2_HEIGHT="${LONGLIVE2_HEIGHT:-704}"
-LONGLIVE2_WIDTH="${LONGLIVE2_WIDTH:-1280}"
-LONGLIVE2_FRAMES="${LONGLIVE2_FRAMES:-128}"
+LONGLIVE2_HEIGHT="${LONGLIVE2_HEIGHT:-480}"
+LONGLIVE2_WIDTH="${LONGLIVE2_WIDTH:-832}"
+LONGLIVE2_FRAMES="${LONGLIVE2_FRAMES:-32}"
 LONGLIVE2_SP_SIZE="${LONGLIVE2_SP_SIZE:-2}"
 LONGLIVE2_DP_SIZE="${LONGLIVE2_DP_SIZE:-1}"
 LONGLIVE2_SAMPLING_STEPS="${LONGLIVE2_SAMPLING_STEPS:-}"
+LONGLIVE2_SEED="${LONGLIVE2_SEED:-0}"
 LONGLIVE2_PROMPT="${LONGLIVE2_PROMPT:-A reactive neon tunnel breathes with smooth cinematic motion.}"
 LONGLIVE2_SCHEDULE_CSV="${LONGLIVE2_SCHEDULE_CSV:-}"
 LONGLIVE2_SHOT_PROMPTS="${LONGLIVE2_SHOT_PROMPTS:-}"
@@ -65,6 +79,15 @@ Options:
   --min-gpu-count <count>       Minimum GPUs in selected offer (default: ${MIN_GPU_COUNT})
   --max-gpu-count <count>       Maximum GPUs in selected offer; 0 disables limit (default: ${MAX_GPU_COUNT})
   --max-dph <usd>               Max selected hourly rate (default: ${MAX_DPH})
+  --preflight                   Run no-spend local checks, dry-runs, offer selection, and budget check
+  --max-alive-min <minutes>     Hard local timeout budget for paid remote phases (default: ${MAX_ALIVE_MIN})
+  --budget-estimate-min <min>   Planned spend estimate window (default: ${BUDGET_ESTIMATE_MIN})
+  --min-credit-usd <usd>        Minimum Vast credit before paid create (default: ${MIN_CREDIT_USD})
+  --min-credit-reserve-usd <usd>
+                                  Credit reserve after planned spend (default: ${MIN_CREDIT_RESERVE_USD})
+  --max-estimated-spend-usd <usd>
+                                  Abort when selected offer estimate exceeds this (default: ${MAX_ESTIMATED_SPEND_USD})
+  --no-require-credit-check     Warn instead of aborting if credit cannot be checked
   --runtime-tag <tag>           R2 LongLive2 runtime tuple (default: ${RUNTIME_TAG})
   --profile <bf16_sp|nvfp4_s4|nvfp4_s2>
                                   LongLive2 profile (default: ${LONGLIVE2_PROFILE})
@@ -73,6 +96,7 @@ Options:
   --frames <count>              Output frames, divisible by 8 (default: ${LONGLIVE2_FRAMES})
   --sp-size <count>             Sequence-parallel size (default: ${LONGLIVE2_SP_SIZE})
   --dp-size <count>             Data-parallel group count (default: ${LONGLIVE2_DP_SIZE})
+  --seed <int>                  Seed written into generated config (default: ${LONGLIVE2_SEED})
   --prompt <text>               Text prompt for smoke generation
   --schedule-csv <path>         Remote/repo EEG schedule CSV for prompt blocks
   --shot-prompt <text>          Multi-shot prompt; may be repeated
@@ -120,6 +144,34 @@ while [[ $# -gt 0 ]]; do
       MAX_DPH="$2"
       shift 2
       ;;
+    --preflight)
+      PREFLIGHT="1"
+      shift
+      ;;
+    --max-alive-min)
+      MAX_ALIVE_MIN="$2"
+      shift 2
+      ;;
+    --budget-estimate-min)
+      BUDGET_ESTIMATE_MIN="$2"
+      shift 2
+      ;;
+    --min-credit-usd)
+      MIN_CREDIT_USD="$2"
+      shift 2
+      ;;
+    --min-credit-reserve-usd)
+      MIN_CREDIT_RESERVE_USD="$2"
+      shift 2
+      ;;
+    --max-estimated-spend-usd)
+      MAX_ESTIMATED_SPEND_USD="$2"
+      shift 2
+      ;;
+    --no-require-credit-check)
+      REQUIRE_CREDIT_CHECK="0"
+      shift
+      ;;
     --runtime-tag)
       RUNTIME_TAG="$2"
       shift 2
@@ -152,6 +204,10 @@ while [[ $# -gt 0 ]]; do
       LONGLIVE2_SAMPLING_STEPS="$2"
       shift 2
       ;;
+    --seed)
+      LONGLIVE2_SEED="$2"
+      shift 2
+      ;;
     --prompt)
       LONGLIVE2_PROMPT="$2"
       shift 2
@@ -179,6 +235,12 @@ while [[ $# -gt 0 ]]; do
     --local-out-dir)
       LOCAL_OUT_DIR="$2"
       PHASE_LOG="${LONGLIVE2_VAST_PHASE_LOG:-$2/phase_markers.log}"
+      PHASE_REPORT="${LONGLIVE2_VAST_PHASE_REPORT:-$2/phase_report.json}"
+      SELECTED_OFFER_LOCAL_JSON="${LONGLIVE2_VAST_SELECTED_OFFER_JSON:-$2/selected_offer.json}"
+      OFFER_SCAN_LOCAL_JSON="${LONGLIVE2_VAST_OFFER_SCAN_JSON:-$2/offer_scan.json}"
+      OFFER_SCAN_LOCAL_CSV="${LONGLIVE2_VAST_OFFER_SCAN_CSV:-$2/offer_scan.csv}"
+      CREDIT_CHECK_JSON="${LONGLIVE2_VAST_CREDIT_JSON:-$2/credit_check.json}"
+      BUDGET_PLAN_JSON="${LONGLIVE2_VAST_BUDGET_PLAN_JSON:-$2/budget_plan.json}"
       shift 2
       ;;
     --no-restore)
@@ -260,6 +322,10 @@ q() {
   printf "%q" "$1"
 }
 
+RUN_DEADLINE_EPOCH_S=""
+SSH_READY="0"
+ARTIFACTS_PULLED="0"
+
 mark_phase() {
   local phase="$1"
   local line
@@ -267,6 +333,61 @@ mark_phase() {
   printf '%s\n' "${line}"
   mkdir -p "$(dirname -- "${PHASE_LOG}")"
   printf '%s\n' "${line}" >>"${PHASE_LOG}"
+}
+
+write_phase_report() {
+  local exit_code="$1"
+  python3 "${SCRIPT_DIR}/longlive2_run_report.py" phase-report \
+    --phase-log "${PHASE_LOG}" \
+    --out "${PHASE_REPORT}" \
+    --run-id "${RUN_ID}" \
+    --exit-code "${exit_code}" \
+    --local-out-dir "${LOCAL_OUT_DIR}" \
+    --selected-offer-json "${SELECTED_OFFER_LOCAL_JSON}" \
+    --credit-json "${CREDIT_CHECK_JSON}" \
+    --max-alive-min "${MAX_ALIVE_MIN}" \
+    --budget-estimate-min "${BUDGET_ESTIMATE_MIN}" >/dev/null 2>&1 || true
+}
+
+start_alive_timer() {
+  if python3 - "${MAX_ALIVE_MIN}" <<'PY'
+import sys
+raise SystemExit(0 if float(sys.argv[1]) > 0 else 1)
+PY
+  then
+    RUN_DEADLINE_EPOCH_S="$(
+      python3 - "${MAX_ALIVE_MIN}" <<'PY'
+import sys
+import time
+print(int(time.time() + float(sys.argv[1]) * 60))
+PY
+    )"
+  fi
+}
+
+remaining_alive_timeout_s() {
+  if [[ -z "${RUN_DEADLINE_EPOCH_S}" ]]; then
+    echo "0"
+    return
+  fi
+  python3 - "${RUN_DEADLINE_EPOCH_S}" <<'PY'
+import sys
+import time
+remaining = int(float(sys.argv[1]) - time.time())
+print(max(1, remaining))
+PY
+}
+
+check_alive_budget() {
+  if [[ -z "${RUN_DEADLINE_EPOCH_S}" ]]; then
+    return
+  fi
+  local remaining
+  remaining="$(remaining_alive_timeout_s)"
+  if [[ "${remaining}" -le 1 ]]; then
+    echo "[error] LongLive2 paid max-alive budget expired (${MAX_ALIVE_MIN} min)." >&2
+    exit 124
+  fi
 }
 
 remote_ssh() {
@@ -279,6 +400,42 @@ remote_ssh() {
     "${VAST_SSH_USER}@${VAST_SSH_HOST}" "$@"
 }
 
+remote_ssh_guarded() {
+  check_alive_budget
+  local timeout_s
+  timeout_s="$(remaining_alive_timeout_s)"
+  python3 - "${timeout_s}" "${SSH_KEY_PATH}" "${VAST_SSH_PORT}" "${VAST_SSH_USER}@${VAST_SSH_HOST}" "$1" <<'PY'
+import subprocess
+import sys
+
+timeout_s = float(sys.argv[1])
+key_path, port, host, remote_cmd = sys.argv[2:]
+cmd = [
+    "ssh",
+    "-i",
+    key_path,
+    "-p",
+    port,
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ServerAliveInterval=30",
+    "-o",
+    "ServerAliveCountMax=6",
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    host,
+    remote_cmd,
+]
+try:
+    proc = subprocess.run(cmd, timeout=timeout_s if timeout_s > 0 else None)
+except subprocess.TimeoutExpired:
+    print(f"[error] remote SSH phase timed out after {timeout_s:.0f}s", file=sys.stderr)
+    raise SystemExit(124)
+raise SystemExit(proc.returncode)
+PY
+}
+
 remote_scp_dir_from() {
   mkdir -p "$2"
   scp -i "${SSH_KEY_PATH}" \
@@ -286,6 +443,11 @@ remote_scp_dir_from() {
     -o BatchMode=yes \
     -o StrictHostKeyChecking=accept-new \
     -r "${VAST_SSH_USER}@${VAST_SSH_HOST}:$1/." "$2/"
+}
+
+remote_scp_dir_from_guarded() {
+  check_alive_budget
+  remote_scp_dir_from "$@"
 }
 
 cleanup_remote_secret() {
@@ -302,15 +464,23 @@ destroy_instance_if_needed() {
     should_destroy="1"
   fi
   if [[ "${should_destroy}" == "1" && -n "${VAST_INSTANCE_ID:-}" ]]; then
+    mark_phase "teardown_start" || true
     VAST_INSTANCE_ID="${VAST_INSTANCE_ID}" bash "${REPO_ROOT}/scripts/vast/terminate_instance.sh" || true
+    mark_phase "teardown_done" || true
   fi
 }
 
 finish() {
   local rc=$?
   trap - EXIT INT TERM
+  if [[ "${SSH_READY}" == "1" && "${ARTIFACTS_PULLED}" != "1" ]]; then
+    mark_phase "artifact_pull_on_exit_start" || true
+    pull_artifacts || true
+    mark_phase "artifact_pull_on_exit_done" || true
+  fi
   cleanup_remote_secret
   destroy_instance_if_needed
+  write_phase_report "${rc}"
   exit "${rc}"
 }
 trap finish EXIT INT TERM
@@ -320,6 +490,7 @@ wait_for_ssh_auth() {
   local last_rc=0
   while [[ "${SECONDS}" -lt "${deadline}" ]]; do
     if remote_ssh "true" >/dev/null 2>&1; then
+      SSH_READY="1"
       return 0
     fi
     last_rc=$?
@@ -330,11 +501,126 @@ wait_for_ssh_auth() {
   return "${last_rc}"
 }
 
+write_explicit_offer_metadata() {
+  mkdir -p "${LOCAL_OUT_DIR}"
+  python3 - "${SELECTED_OFFER_LOCAL_JSON}" "${OFFER_ID}" "${RUNTIME_TAG}" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+out, offer_id, runtime_tag = sys.argv[1:]
+payload = {
+    "provider": "vastai",
+    "source": "explicit_offer_id",
+    "runtime_tag": runtime_tag,
+    "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    "selected_offer": {"offer_id": offer_id},
+}
+Path(out).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+}
+
+selected_offer_estimated_spend() {
+  python3 - "${SELECTED_OFFER_LOCAL_JSON}" "${BUDGET_ESTIMATE_MIN}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+minutes = float(sys.argv[2])
+if not path.is_file():
+    raise SystemExit(1)
+payload = json.loads(path.read_text(encoding="utf-8"))
+offer = payload.get("selected_offer") if isinstance(payload, dict) else {}
+try:
+    dph = float(offer.get("dph_total"))
+except Exception:
+    raise SystemExit(1)
+print(round(dph * minutes / 60.0, 6))
+PY
+}
+
+write_budget_plan() {
+  local estimated_spend="${1:-}"
+  mkdir -p "${LOCAL_OUT_DIR}"
+  python3 - "${BUDGET_PLAN_JSON}" "${RUN_ID}" "${MAX_ALIVE_MIN}" "${BUDGET_ESTIMATE_MIN}" "${MIN_CREDIT_USD}" "${MIN_CREDIT_RESERVE_USD}" "${MAX_ESTIMATED_SPEND_USD}" "${estimated_spend}" "${SELECTED_OFFER_LOCAL_JSON}" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+(
+    out,
+    run_id,
+    max_alive_min,
+    budget_estimate_min,
+    min_credit_usd,
+    reserve_usd,
+    max_estimated_spend_usd,
+    estimated_spend,
+    selected_offer_json,
+) = sys.argv[1:]
+offer_payload = {}
+path = Path(selected_offer_json)
+if path.is_file():
+    offer_payload = json.loads(path.read_text(encoding="utf-8"))
+payload = {
+    "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    "run_id": run_id,
+    "max_alive_min": float(max_alive_min),
+    "budget_estimate_min": float(budget_estimate_min),
+    "min_credit_usd": float(min_credit_usd),
+    "min_credit_reserve_usd": float(reserve_usd),
+    "max_estimated_spend_usd": float(max_estimated_spend_usd) if max_estimated_spend_usd else None,
+    "estimated_spend_usd": float(estimated_spend) if estimated_spend else None,
+    "selected_offer": offer_payload.get("selected_offer", {}),
+}
+Path(out).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+}
+
+check_selected_offer_budget() {
+  local estimated_spend
+  estimated_spend="$(selected_offer_estimated_spend 2>/dev/null || true)"
+  write_budget_plan "${estimated_spend}"
+  if [[ -n "${estimated_spend}" && -n "${MAX_ESTIMATED_SPEND_USD}" ]]; then
+    python3 - "${estimated_spend}" "${MAX_ESTIMATED_SPEND_USD}" <<'PY'
+import sys
+estimated = float(sys.argv[1])
+maximum = float(sys.argv[2])
+if estimated > maximum:
+    print(
+        f"[error] selected offer estimated spend ${estimated:.4f} exceeds max ${maximum:.4f}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+PY
+  fi
+  set +e
+  python3 "${REPO_ROOT}/scripts/vast/show_credit.py" \
+    --out-json "${CREDIT_CHECK_JSON}" \
+    --min-credit-usd "${MIN_CREDIT_USD}" \
+    --reserve-usd "${MIN_CREDIT_RESERVE_USD}" \
+    --estimated-spend-usd "${estimated_spend:-0}"
+  local rc=$?
+  set -e
+  if [[ "${rc}" -ne 0 ]]; then
+    if [[ "${REQUIRE_CREDIT_CHECK}" == "1" ]]; then
+      echo "[error] Vast credit check failed or budget is insufficient; see ${CREDIT_CHECK_JSON}" >&2
+      exit "${rc}"
+    fi
+    echo "[warn] Vast credit check failed or budget is insufficient, continuing because --no-require-credit-check was set." >&2
+  fi
+}
+
 select_offer_if_needed() {
   if [[ -n "${OFFER_ID}" ]]; then
+    write_explicit_offer_metadata
     return
   fi
   mkdir -p "${SCRIPT_DIR}/.tmp"
+  mkdir -p "${LOCAL_OUT_DIR}"
   local scan_json="${SCRIPT_DIR}/.tmp/${RUN_ID}_longlive2_offer_scan.json"
   local scan_csv="${SCRIPT_DIR}/.tmp/${RUN_ID}_longlive2_offer_scan.csv"
   local selected_json="${SCRIPT_DIR}/.tmp/${RUN_ID}_longlive2_offer_selected.json"
@@ -361,6 +647,23 @@ select_offer_if_needed() {
     select_args+=(--allow-runtime-gpu-mismatch)
   fi
   python3 "${REPO_ROOT}/scripts/vast/select_video_offer.py" "${select_args[@]}"
+  python3 - "${scan_json}" "${OFFER_SCAN_LOCAL_JSON}" "${selected_json}" "${SELECTED_OFFER_LOCAL_JSON}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+def scrub(value):
+    if isinstance(value, dict):
+        return {k: scrub(v) for k, v in value.items() if k != "raw"}
+    if isinstance(value, list):
+        return [scrub(item) for item in value]
+    return value
+
+for src, dst in ((sys.argv[1], sys.argv[2]), (sys.argv[3], sys.argv[4])):
+    payload = json.loads(Path(src).read_text(encoding="utf-8"))
+    Path(dst).write_text(json.dumps(scrub(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+  cp "${scan_csv}" "${OFFER_SCAN_LOCAL_CSV}"
   OFFER_ID="$(python3 - "${selected_json}" <<'PY'
 import json
 import sys
@@ -380,6 +683,7 @@ create_instance_if_requested() {
     return
   fi
   select_offer_if_needed
+  check_selected_offer_budget
   mkdir -p "${SCRIPT_DIR}/.tmp"
   local provision_log="${SCRIPT_DIR}/.tmp/${RUN_ID}_provision.log"
   echo "[longlive2-vast] creating paid Vast instance offer=${OFFER_ID} label=${VAST_LABEL}"
@@ -406,7 +710,7 @@ create_instance_if_requested() {
 }
 
 ensure_remote_system_deps() {
-  remote_ssh "set -euo pipefail
+  remote_ssh_guarded "set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 need_apt=0
 for cmd in git curl ffmpeg python3 rsync zstd; do
@@ -428,8 +732,10 @@ echo '[longlive2-vast] remote system deps ready'
 
 sync_repo_to_remote() {
   echo "[longlive2-vast] syncing repo to ${REMOTE_ROOT}"
-  remote_ssh "mkdir -p $(q "${REMOTE_ROOT}") $(q "${REMOTE_ROOT}/.secrets") $(q "${REMOTE_RUN_DIR}")"
+  check_alive_budget
+  remote_ssh_guarded "mkdir -p $(q "${REMOTE_ROOT}") $(q "${REMOTE_ROOT}/.secrets") $(q "${REMOTE_RUN_DIR}")"
   rsync -az \
+    --timeout=120 \
     --exclude '.git' \
     --exclude 'VideoDiffusion/MAGI-1' \
     --exclude 'VideoDiffusion/.venv' \
@@ -445,6 +751,7 @@ sync_repo_to_remote() {
 }
 
 copy_r2_secret() {
+  check_alive_budget
   if [[ ! -f "${R2_ENV_FILE}" ]]; then
     echo "[error] R2 env file not found: ${R2_ENV_FILE}" >&2
     exit 1
@@ -458,14 +765,14 @@ copy_r2_secret() {
 }
 
 remote_setup_longlive2_clone_only() {
-  remote_ssh "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/setup_longlive2.sh --profile $(q "${LONGLIVE2_PROFILE}") --skip-build 2>&1 | tee $(q "${REMOTE_RUN_DIR}/setup_longlive2_clone.log")"
+  remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/setup_longlive2.sh --profile $(q "${LONGLIVE2_PROFILE}") --skip-build 2>&1 | tee $(q "${REMOTE_RUN_DIR}/setup_longlive2_clone.log")"
 }
 
 remote_restore_or_download() {
   if [[ "${RESTORE_TUPLE}" == "1" ]]; then
     echo "[longlive2-vast] restoring R2 tuple ${RUNTIME_TAG}"
     set +e
-    remote_ssh "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); R2_ENV_FILE=$(q "${REMOTE_R2_ENV}") R2_PREFIX=$(q "${R2_PREFIX}") bash VideoDiffusion/restore_r2_prebuild_model.sh --model longlive2 --mode tuple --runtime-tag $(q "${RUNTIME_TAG}") --apply-venv-target $(q "${REMOTE_VIDEO_DIR}/.vendors/LongLive2/.venv") --apply-weights-target $(q "${REMOTE_VIDEO_DIR}/.cache/longlive2") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/restore_longlive2_tuple.log")"
+    remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); R2_ENV_FILE=$(q "${REMOTE_R2_ENV}") R2_PREFIX=$(q "${R2_PREFIX}") bash VideoDiffusion/restore_r2_prebuild_model.sh --model longlive2 --mode tuple --runtime-tag $(q "${RUNTIME_TAG}") --apply-venv-target $(q "${REMOTE_VIDEO_DIR}/.vendors/LongLive2/.venv") --apply-weights-target $(q "${REMOTE_VIDEO_DIR}/.cache/longlive2") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/restore_longlive2_tuple.log")"
     local rc=$?
     set -e
     if [[ "${rc}" -eq 0 ]]; then
@@ -477,12 +784,12 @@ remote_restore_or_download() {
     fi
     echo "[longlive2-vast] restore failed; falling back to setup and model download"
   fi
-  remote_ssh "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/setup_longlive2.sh --profile $(q "${LONGLIVE2_PROFILE}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/setup_longlive2_build.log")"
+  remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/setup_longlive2.sh --profile $(q "${LONGLIVE2_PROFILE}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/setup_longlive2_build.log")"
   download_args=(--profile "${LONGLIVE2_PROFILE}")
   if [[ "${INCLUDE_WAN}" == "1" ]]; then
     download_args+=(--include-wan)
   fi
-  remote_ssh "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/download_longlive2_models.sh $(printf '%q ' "${download_args[@]}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/download_longlive2_models.log")"
+  remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/download_longlive2_models.sh $(printf '%q ' "${download_args[@]}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/download_longlive2_models.log")"
 }
 
 remote_run_smoke() {
@@ -494,6 +801,7 @@ remote_run_smoke() {
     --frames "${LONGLIVE2_FRAMES}"
     --sp-size "${LONGLIVE2_SP_SIZE}"
     --dp-size "${LONGLIVE2_DP_SIZE}"
+    --seed "${LONGLIVE2_SEED}"
     --prompt "${LONGLIVE2_PROMPT}"
   )
   if [[ -n "${LONGLIVE2_SAMPLING_STEPS}" ]]; then
@@ -515,32 +823,100 @@ remote_run_smoke() {
       run_args+=(--shot-duration "${shot_duration}")
     done
   fi
-  remote_ssh "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/run_longlive2_sp_offline.sh $(printf '%q ' "${run_args[@]}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/run_longlive2_sp_offline.wrapper.log")"
+  remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/run_longlive2_sp_offline.sh $(printf '%q ' "${run_args[@]}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/run_longlive2_sp_offline.wrapper.log")"
 }
 
 pull_artifacts() {
   echo "[longlive2-vast] pulling artifacts to ${LOCAL_OUT_DIR}"
   mkdir -p "${LOCAL_OUT_DIR}"
   remote_scp_dir_from "${REMOTE_RUN_DIR}" "${LOCAL_OUT_DIR}"
+  ARTIFACTS_PULLED="1"
 }
+
+run_preflight() {
+  mkdir -p "${LOCAL_OUT_DIR}"
+  mark_phase "preflight_start"
+  echo "[longlive2-vast] preflight: scripts/check.sh"
+  bash "${REPO_ROOT}/scripts/check.sh"
+  echo "[longlive2-vast] preflight: git diff --check"
+  git -C "${REPO_ROOT}" diff --check
+  echo "[longlive2-vast] preflight: active Vast instances"
+  local instances_raw
+  instances_raw="$(vastai show instances --raw)"
+  local active_count
+  active_count="$(INSTANCES_JSON="${instances_raw}" python3 - <<'PY'
+import json
+import os
+payload = json.loads(os.environ["INSTANCES_JSON"])
+instances = payload.get("instances") if isinstance(payload, dict) else payload
+print(len(instances) if isinstance(instances, list) else -1)
+PY
+)"
+  if [[ "${active_count}" != "0" ]]; then
+    echo "[error] Vast active instance count is ${active_count}; refusing preflight success." >&2
+    exit 1
+  fi
+  echo "[longlive2-vast] preflight: offline LongLive2 dry run"
+  bash "${SCRIPT_DIR}/run_longlive2_sp_offline.sh" \
+    --dry-run \
+    --run-dir "${SCRIPT_DIR}/.tmp/${RUN_ID}_preflight_offline" \
+    --height "${LONGLIVE2_HEIGHT}" \
+    --width "${LONGLIVE2_WIDTH}" \
+    --frames "${LONGLIVE2_FRAMES}" \
+    --sp-size "${LONGLIVE2_SP_SIZE}" \
+    --dp-size "${LONGLIVE2_DP_SIZE}" \
+    --seed "${LONGLIVE2_SEED}" \
+    --shot-prompt "A calm luminous ocean breathes slowly." \
+    --shot-prompt "A frantic neon tunnel accelerates."
+  echo "[longlive2-vast] preflight: NVFP4-on-sm90 guard should fail"
+  if bash "${BASH_SOURCE[0]}" \
+    --dry-run \
+    --profile nvfp4_s2 \
+    --runtime-tag longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm90_prebuild1 \
+    --gpu-regex 'H100|H200|GH200' >/tmp/longlive2_nvfp4_guard.out 2>/tmp/longlive2_nvfp4_guard.err; then
+    echo "[error] NVFP4-on-sm90 guard unexpectedly passed." >&2
+    cat /tmp/longlive2_nvfp4_guard.out >&2 || true
+    cat /tmp/longlive2_nvfp4_guard.err >&2 || true
+    exit 1
+  fi
+  echo "[longlive2-vast] preflight: offer selection and credit/budget check"
+  select_offer_if_needed
+  check_selected_offer_budget
+  mark_phase "preflight_done"
+  write_phase_report 0
+  echo "[longlive2-vast] preflight ok local_dir=${LOCAL_OUT_DIR}"
+}
+
+if [[ "${PREFLIGHT}" == "1" ]]; then
+  run_preflight
+  exit 0
+fi
 
 if [[ "${DRY_RUN}" == "1" ]]; then
   cat <<EOF
 [longlive2-vast] dry-run
 run_id=${RUN_ID}
 create_instance=${CREATE_INSTANCE}
+preflight=${PREFLIGHT}
 runtime_tag=${RUNTIME_TAG}
 gpu_regex=${GPU_REGEX}
 min_gpu_count=${MIN_GPU_COUNT}
 max_gpu_count=${MAX_GPU_COUNT}
 max_dph=${MAX_DPH}
+max_alive_min=${MAX_ALIVE_MIN}
+budget_estimate_min=${BUDGET_ESTIMATE_MIN}
+min_credit_usd=${MIN_CREDIT_USD}
+min_credit_reserve_usd=${MIN_CREDIT_RESERVE_USD}
+max_estimated_spend_usd=${MAX_ESTIMATED_SPEND_USD}
 profile=${LONGLIVE2_PROFILE}
 geometry=${LONGLIVE2_HEIGHT}x${LONGLIVE2_WIDTH}
 frames=${LONGLIVE2_FRAMES}
 sp_size=${LONGLIVE2_SP_SIZE}
 dp_size=${LONGLIVE2_DP_SIZE}
+seed=${LONGLIVE2_SEED}
 schedule_csv=${LONGLIVE2_SCHEDULE_CSV}
 local_out_dir=${LOCAL_OUT_DIR}
+phase_report=${PHASE_REPORT}
 EOF
   exit 0
 fi
@@ -551,6 +927,7 @@ if [[ ! -f "${SSH_KEY_PATH}" ]]; then
 fi
 
 cd "${REPO_ROOT}"
+start_alive_timer
 mark_phase "create_instance_start"
 create_instance_if_requested
 mark_phase "create_instance_done"

@@ -200,21 +200,31 @@ Implemented files:
 4. `VideoDiffusion/run_longlive2_sp_offline.sh`
    - runs an offline render through `torchrun`;
    - supports `sp_size * dp_size` process count;
-   - writes config, launch plan, torchrun log, GPU telemetry, report JSON, artifact QA, and contact sheet.
+   - writes config, launch plan, torchrun log, GPU telemetry, report JSON, artifact QA, and contact sheet;
+   - accepts `--seed` so `sp1` and `sp2` comparisons can hold the seed fixed.
 5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh`
    - provisions a two-GPU Vast host only when `--create-instance` is passed;
    - selects offers with `--min-gpu-count 2 --max-gpu-count 2`;
+   - supports `--preflight` for no-spend local checks, dry-run, offer selection, active-instance check, credit check, and budget gate;
+   - writes sanitized selected-offer, credit, budget, phase-marker, and phase-report artifacts;
+   - enforces `--max-alive-min` around paid remote SSH phases;
+   - attempts best-effort artifact pullback before teardown even when setup/download/render fails;
    - restores R2 tuple when available;
    - build/download fallback only when explicitly allowed;
    - runs one short SP inference;
    - pulls local MP4, logs, config, phase telemetry, and GPU telemetry;
    - tears down by default.
-6. `VideoDiffusion/longlive2_run_report.py`
+6. `VideoDiffusion/run_longlive2_sp_benchmark.sh`
+   - runs same-prompt, same-seed `sp_size=1` and `sp_size=2` cases;
+   - writes `sp_benchmark_report.json` with `speedup_sp2_over_sp1`;
+   - does not provision Vast by itself.
+7. `VideoDiffusion/longlive2_run_report.py`
    - parses torchrun logs for SP group layout;
    - parses per-GPU utilization;
    - reads `ffprobe` metadata when output exists;
-   - generates contact sheet and nonblank artifact QA when possible.
-7. R2 dispatch updates:
+   - generates contact sheet and nonblank artifact QA when possible;
+   - parses wrapper phase markers into phase/cost reports.
+8. R2 dispatch updates:
    - `--model longlive2` is supported in `VideoDiffusion/publish_r2_prebuild_model.sh`;
    - `--model longlive2` is supported in `VideoDiffusion/restore_r2_prebuild_model.sh`;
    - default tuple tiers are `longlive2-bf16-sp-hopper,longlive2-nvfp4-blackwell`.
@@ -279,7 +289,8 @@ These can run without GPU hardware:
 4. dry-run launch command test that prints the exact `torchrun` command without executing it;
 5. R2 manifest dry-run with fake paths;
 6. report parser selftest using captured or synthetic torchrun logs;
-7. teardown parser selftest for Vast instance IDs.
+7. wrapper `--preflight` before paid launch, including offer selection and credit/budget checks;
+8. teardown parser selftest for Vast instance IDs.
 
 ### Paid GPU Test 1: BF16 SP Bring-Up
 
@@ -288,9 +299,10 @@ Goal: prove one stream uses two ranks.
 Constraints:
 
 1. `--min-gpu-count 2 --max-gpu-count 2`.
-2. `--max-attempt-wall-clock-s` around `1800` for first smoke.
+2. `--max-alive-min` around `45` for first smoke.
 3. `--destroy-on-exit` default true.
-4. pull local output before teardown.
+4. use explicit modest geometry first: `480x832`, `32` frames.
+5. pull local output before teardown, including failure logs when render fails.
 
 Acceptance:
 
@@ -310,6 +322,17 @@ Run the same prompt/config in this order:
 
 1. `sp_size=1`, `--nproc_per_node=1`, one GPU visible.
 2. `sp_size=2`, `--nproc_per_node=2`, two GPUs visible.
+
+Use the wrapper when the runtime is already prepared:
+
+```bash
+bash VideoDiffusion/run_longlive2_sp_benchmark.sh \
+  --profile bf16_sp \
+  --height 480 \
+  --width 832 \
+  --frames 32 \
+  --seed 0
+```
 
 Record:
 
@@ -370,11 +393,12 @@ The offline `torchrun` smoke is only the proof that the model/runtime is viable.
 Default order:
 
 1. prove BF16 SP works on a two-GPU Hopper host;
-2. publish the BF16 SP tuple to R2;
-3. test one-GPU vs two-GPU speedup;
-4. test NVFP4 S2 on SM100;
-5. publish the NVFP4 S2 tuple to R2;
-6. build a persistent runner only after a distributed inference lane has useful speedup.
+2. publish the BF16 SP tuple to R2 only after a successful render;
+3. validate that BF16 SP tuple with a fresh restore run;
+4. test one-GPU vs two-GPU speedup with `VideoDiffusion/run_longlive2_sp_benchmark.sh`;
+5. test NVFP4 S2 on SM100;
+6. publish and then separately validate the NVFP4 S2 tuple;
+7. build a persistent runner only after a distributed inference lane has useful speedup.
 
 Quality knobs:
 
@@ -389,8 +413,9 @@ Cost knobs:
 1. prefer same-instance sweeps after a host is paid for;
 2. cap first smoke wall-clock aggressively;
 3. stop immediately after a failed import/build unless the error is clearly fixable within the current budget;
-4. publish successful env/model tuples before terminating the builder instance;
+4. publish successful env/model tuples before terminating the builder instance when the render proves the env is reusable;
 5. never keep an instance alive just to preserve a loaded model unless the user explicitly asks.
+6. keep first-smoke geometry explicit and modest (`480x832`, `32` frames) until a restore tuple exists.
 
 ## Done State
 
@@ -407,4 +432,5 @@ First paid validation is done when:
 2. per-GPU telemetry proves both cards were used;
 3. the instance is destroyed and active instances are checked;
 4. the reusable tuple is published to R2 if the environment is worth preserving;
-5. docs record the exact run root, timings, spend, and artifact paths.
+5. a later fresh restore run validates that tuple before it becomes the default fast path;
+6. docs record the exact run root, timings, spend, and artifact paths.

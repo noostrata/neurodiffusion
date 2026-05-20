@@ -142,9 +142,12 @@ python3 VideoDiffusion/eeg_control/run_neurofeedback_session.py \
 
 bash VideoDiffusion/run_longlive2_sp_offline.sh \
   --dry-run \
-  --frames 128 \
+  --height 480 \
+  --width 832 \
+  --frames 32 \
   --sp-size 2 \
   --dp-size 1 \
+  --seed 0 \
   --schedule-csv VideoDiffusion/.tmp/longlive2_eeg_schedule.csv
 ```
 

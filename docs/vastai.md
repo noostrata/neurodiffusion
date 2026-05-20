@@ -320,13 +320,15 @@ Instance lifecycle:
 
 1. query offers with `scripts/vast/query_video_offers.py --model longlive2`;
 2. prefer datacenter two-GPU listings with good disk/network and, when visible, better GPU topology;
-3. provision only with explicit `--create-instance`;
-4. restore the R2 LongLive2 tuple if available;
-5. otherwise build/download with a strict wall-clock cap;
-6. run one short offline SP smoke;
-7. pull the MP4, logs, generated config, `ffprobe`, sampled frames/contact sheet, per-GPU telemetry, and spend report;
-8. publish the tuple to R2 only if the smoke proves reusable imports/builds;
-9. destroy the instance by default and verify `vastai show instances --raw`.
+3. run `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` before spending;
+4. provision only with explicit `--create-instance`;
+5. restore the R2 LongLive2 tuple only after a validated restore tuple exists;
+6. otherwise build/download with `--no-restore --download-fallback` and a strict wall-clock cap;
+7. run one short offline SP smoke;
+8. pull the MP4, logs, generated config, `ffprobe`, sampled frames/contact sheet, per-GPU telemetry, selected-offer JSON, credit/budget JSON, and phase report;
+9. publish the tuple to R2 only if the smoke proves reusable imports/builds;
+10. validate the published tuple with a later fresh restore run before calling it a default fast path;
+11. destroy the instance by default and verify `vastai show instances --raw`.
 
 Acceptance:
 
@@ -345,6 +347,12 @@ Wrapper dry-run:
 bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --dry-run
 ```
 
+No-spend preflight:
+
+```bash
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight
+```
+
 Paid wrapper shape, only after explicit approval:
 
 ```bash
@@ -354,7 +362,19 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --min-gpu-count 2 \
   --max-gpu-count 2 \
   --profile bf16_sp \
-  --frames 128
+  --height 480 \
+  --width 832 \
+  --frames 32 \
+  --sp-size 2 \
+  --dp-size 1 \
+  --seed 0 \
+  --max-alive-min 45 \
+  --budget-estimate-min 45 \
+  --min-credit-usd 7.00 \
+  --min-credit-reserve-usd 1.00 \
+  --max-estimated-spend-usd 6.00 \
+  --no-restore \
+  --download-fallback
 ```
 
 Blackwell NVFP4 shape, only after the BF16 SP path is proven or when explicitly targeting Blackwell:

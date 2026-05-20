@@ -278,11 +278,15 @@ Quick cost table for the observed `H200 x2` rate:
 LongLive2 first-run budgeting:
 
 1. no-cost dry-runs must produce the exact `torchrun` command and config before launch;
-2. first paid BF16 SP smoke should cap wall-clock around `30 min` unless the build is clearly progressing;
-3. a successful build should publish the tuple to R2 before teardown so future runs pay restore time, not rebuild time;
-4. a failed import/build should tear down immediately unless the fix is obvious and within the remaining budget;
-5. do not keep an instance alive just to preserve a loaded process;
-6. promote two-GPU SP only if one-stream speedup justifies the extra hourly rate.
+2. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` should pass before paid launch;
+3. first paid BF16 SP smoke should use explicit modest geometry (`480x832`, `32` frames) and cap wall-clock around `45 min`;
+4. the wrapper now writes `selected_offer.json`, `credit_check.json`, `budget_plan.json`, and `phase_report.json` for spend analysis;
+5. the default planned spend gate is `45 min` at `<= $8/h`, capped at about `$6.00` before storage/operation noise;
+6. a successful build should publish the tuple to R2 before teardown so future runs pay restore time, not rebuild time;
+7. a published tuple is not a validated restore tuple until a fresh instance restores it and renders again;
+8. a failed import/build should still pull logs locally before teardown unless SSH never became reachable;
+9. do not keep an instance alive just to preserve a loaded process;
+10. promote two-GPU SP only if one-stream speedup justifies the extra hourly rate.
 
 Two-GPU decision metric:
 

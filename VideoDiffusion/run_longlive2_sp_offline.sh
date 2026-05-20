@@ -30,6 +30,7 @@ LONGLIVE2_FRAMES="${LONGLIVE2_FRAMES:-128}"
 LONGLIVE2_SP_SIZE="${LONGLIVE2_SP_SIZE:-2}"
 LONGLIVE2_DP_SIZE="${LONGLIVE2_DP_SIZE:-1}"
 LONGLIVE2_SAMPLING_STEPS="${LONGLIVE2_SAMPLING_STEPS:-}"
+LONGLIVE2_SEED="${LONGLIVE2_SEED:-0}"
 LONGLIVE2_GENERATOR_CKPT="${LONGLIVE2_GENERATOR_CKPT:-}"
 LONGLIVE2_LORA_CKPT="${LONGLIVE2_LORA_CKPT:-}"
 LONGLIVE2_VAE_DEVICE="${LONGLIVE2_VAE_DEVICE:-}"
@@ -60,6 +61,8 @@ Options:
   --frames <count>              Output frames, divisible by 8 (default: ${LONGLIVE2_FRAMES})
   --sp-size <count>             Sequence parallel size (default: ${LONGLIVE2_SP_SIZE})
   --dp-size <count>             Data parallel groups (default: ${LONGLIVE2_DP_SIZE})
+  --sampling-steps <count>      Sampling steps override
+  --seed <int>                  Seed written into generated config (default: ${LONGLIVE2_SEED})
   --generator-ckpt <path>       Generator checkpoint path inside LongLive2 runtime
   --lora-ckpt <path>            Optional LoRA checkpoint path
   --cuda-visible-devices <csv>  CUDA_VISIBLE_DEVICES override
@@ -139,6 +142,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --sampling-steps)
       LONGLIVE2_SAMPLING_STEPS="$2"
+      shift 2
+      ;;
+    --seed)
+      LONGLIVE2_SEED="$2"
       shift 2
       ;;
     --generator-ckpt)
@@ -257,6 +264,7 @@ if [[ "${LONGLIVE2_SKIP_CONFIG_GENERATION}" != "1" ]]; then
     --sp-size "${LONGLIVE2_SP_SIZE}"
     --dp-size "${LONGLIVE2_DP_SIZE}"
     --torch-compile "${LONGLIVE2_TORCH_COMPILE}"
+    --seed "${LONGLIVE2_SEED}"
   )
   if [[ -n "${LONGLIVE2_SAMPLING_STEPS}" ]]; then
     config_args+=(--sampling-steps "${LONGLIVE2_SAMPLING_STEPS}")
@@ -317,13 +325,13 @@ if [[ "${LONGLIVE2_PROFILE}" == nvfp4* && "${GPU_NAMES}" != *"B200"* && "${GPU_N
   echo "[warn] ${message}" >&2
 fi
 
-python3 - "${PLAN_JSON}" "${LONGLIVE2_RUN_ID}" "${LONGLIVE2_SRC_DIR}" "${LONGLIVE2_CONFIG_PATH}" "${ENTRYPOINT}" "${NPROC}" "${LONGLIVE2_CUDA_VISIBLE_DEVICES}" "${LONGLIVE2_PROFILE}" "${GPU_NAMES}" "${LONGLIVE2_GENERATOR_CKPT}" "${LONGLIVE2_LORA_CKPT}" <<'PY'
+python3 - "${PLAN_JSON}" "${LONGLIVE2_RUN_ID}" "${LONGLIVE2_SRC_DIR}" "${LONGLIVE2_CONFIG_PATH}" "${ENTRYPOINT}" "${NPROC}" "${LONGLIVE2_CUDA_VISIBLE_DEVICES}" "${LONGLIVE2_PROFILE}" "${GPU_NAMES}" "${LONGLIVE2_GENERATOR_CKPT}" "${LONGLIVE2_LORA_CKPT}" "${LONGLIVE2_SEED}" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-out, run_id, src_dir, config_path, entrypoint, nproc, devices, profile, gpu_names, generator_ckpt, lora_ckpt = sys.argv[1:]
+out, run_id, src_dir, config_path, entrypoint, nproc, devices, profile, gpu_names, generator_ckpt, lora_ckpt, seed = sys.argv[1:]
 payload = {
     "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     "run_id": run_id,
@@ -336,6 +344,7 @@ payload = {
     "gpu_names": gpu_names,
     "generator_ckpt": generator_ckpt,
     "lora_ckpt": lora_ckpt,
+    "seed": int(seed),
 }
 Path(out).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 PY

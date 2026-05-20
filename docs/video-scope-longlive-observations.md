@@ -1,6 +1,6 @@
 # Scope + LongLive Observations
 
-_Last updated: 2026-05-15_
+_Last updated: 2026-05-20_
 
 This is the empirical run log for Daydream Scope + LongLive realtime validation.
 Keep this file synchronized with:
@@ -10,6 +10,142 @@ Keep this file synchronized with:
 3. `docs/cloudflare-r2.md` for tuple/cache artifacts;
 4. `docs/budget-analysis.md` for pricing and spend assumptions;
 5. `AGENTS.md` for canonical repo operating rules.
+
+## 2026-05-20 cheap-GPU automation prep
+
+Status: local runner implemented; first cheap-GPU validation recorded below.
+
+Added operator entry point:
+
+```bash
+bash VideoDiffusion/run_scope_longlive_vast_smoke.sh \
+  --create-instance \
+  --gpu-regex 'RTX.?4090|RTX.?5090|L40S' \
+  --max-dph 1.50 \
+  --duration-s 30
+```
+
+The runner automates:
+
+1. Scope offer query and deterministic selection;
+2. optional paid Vast provisioning only behind `--create-instance`;
+3. SSH readiness, repo sync, remote dependency bootstrap, and Scope checkout/patch;
+4. R2 tuple restore into the Scope uv env and `VideoDiffusion/.cache/daydream-scope`;
+5. `SCOPE_AUTO_LOAD=0` server start and explicit no-VACE LongLive load;
+6. WebRTC MP4 capture while synthetic EEG drives Scope OSC updates;
+7. local artifact pullback and `run_report.json`;
+8. R2 secret cleanup and teardown for wrapper-created instances.
+
+Acceptance encoded in `run_report.json`:
+
+| Gate | Threshold |
+| --- | ---: |
+| frames received | `>0` |
+| receive FPS | `>=24` |
+| first frame latency | `<=2s` |
+| synthetic EEG Scope updates | `>0` |
+| local MP4 | exists and non-empty |
+
+Implementation note:
+
+1. The B200 tuple remains `scope_auto_py312_torch2.9.1_cu128_sm100`.
+2. For cheap GPUs, the runner defaults `SCOPE_VAST_ALLOW_RUNTIME_GPU_MISMATCH=1` because Scope tuple reuse is environment/cache oriented.
+3. If a cheap GPU rejects the restored tuple, rerun with `--download-fallback` to test deterministic host-local model download.
+
+## 2026-05-20 RTX 4090 cheap smoke
+
+Status: complete; failed realtime acceptance, passed generation/pullback/teardown.
+
+Teardown result:
+
+1. Vast instance `37167888` was destroyed by the runner.
+2. Final `vastai show instances --raw` returned `[]`.
+3. Local MP4, sampled frames, logs, and `run_report.json` were pulled before teardown.
+
+Selected GPU:
+
+| Field | Value |
+| --- | --- |
+| Vast offer id | `36866026` |
+| Vast instance id | `37167888` |
+| GPU | `RTX 4090 x1` |
+| VRAM | `24564 MB` |
+| Hourly rate observed after launch | `$0.8685185185185185/h` total |
+| Location | `Hungary, HU` |
+| CUDA max good | `13.0` |
+| Runtime tag | `scope_auto_py312_torch2.9.1_cu128_sm100` |
+
+Why this offer:
+
+1. the cheapest 4090 scan result was `$0.401/h` but only reported `cuda_max_good=12.7`;
+2. the Scope tuple is CUDA `12.8`, so the Scope query now requires `cuda_max_good>=12.8`;
+3. no `RTX 5090`, `L40S`, `RTX 6000`, or `A6000` matches were available under the current Scope query at the time of scan.
+
+Provisioning observation:
+
+1. Vast created the instance and finished image load, but left it in a stopped/loading state.
+2. A manual `vastai start instance 37167888 --raw` was needed for this run.
+3. `scripts/vast/provision_video_instance.sh` now detects `Successfully loaded` + stopped state and requests start automatically.
+
+Restore observation:
+
+1. R2 model/cache restore succeeded and populated `VideoDiffusion/.cache/daydream-scope`.
+2. The restored Scope uv venv was not fully portable on this fresh host because the uv-managed CPython interpreter was missing.
+3. uv recreated the venv before server start, so this run did not get the desired fast env restore.
+4. `VideoDiffusion/restore_r2_prebuild_model.sh` now installs/finds the recorded uv Python and repairs `.venv/bin/python*` links after extraction.
+
+Performance result:
+
+| Metric | Value |
+| --- | ---: |
+| WebRTC frame count | `322` |
+| Receive FPS | `11.310` |
+| First frame latency | `2.480s` |
+| Output duration by ffprobe | `13.416667s` |
+| Output resolution | `576x320` |
+| Synthetic EEG records | `56` |
+| Synthetic EEG state-change emits | `3` |
+
+Acceptance:
+
+| Gate | Result |
+| --- | --- |
+| frames received | pass |
+| receive FPS `>=24` | fail |
+| first frame latency `<=2s` | fail |
+| synthetic EEG emitted Scope updates | pass |
+| local MP4 exists | pass |
+| overall | fail |
+
+Local artifacts:
+
+```text
+/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z/run_report.json
+/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z/webrtc_capture.mp4
+/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z/frames/frame_000024.png
+/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4
+/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_frame_000024.png
+```
+
+Visual inspection:
+
+1. opened `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z/frames/frame_000024.png`;
+2. frame showed coherent red/blue hexagonal neon tunnel geometry;
+3. output quality was valid, but throughput was not realtime.
+
+Conclusion:
+
+1. `RTX 4090 24GB` is not enough for the current `320x576` LongLive realtime target.
+2. B200 remains the known-good realtime tier for this exact profile.
+3. The next cost pass should either test a currently available `RTX 5090`/`L40S`/H100-class offer, or intentionally lower resolution on 4090 and record the quality/performance tradeoff.
+
+Follow-up lower-resolution attempt:
+
+1. A `192x320` 4090 probe was prepared with the new `--height`/`--width` runner options.
+2. The previously selected offer disappeared before launch with Vast `no_such_ask`.
+3. A fresh `RTX 4090` / `RTX 5090` / `L40S` scan with `cuda_max_good>=12.8` returned `0` offers.
+4. No second paid instance was created for the lower-resolution probe.
+5. `scripts/vast/provision_video_instance.sh` now rejects failed create output before parsing an instance id, so this offer-race failure will fail fast next time.
 
 ## 2026-05-15 B200 realtime validation
 
@@ -276,5 +412,5 @@ Recommended next empirical pass:
 Recommended code/doc improvement:
 
 1. republish the Scope tuple with a faster model-cache archive mode if R2 transfer/extract time dominates the next boot;
-2. add a one-command Scope Vast smoke that performs restore, server start, load, WebRTC capture, synthetic EEG, pullback, and teardown;
+2. run the one-command Scope Vast smoke on `RTX 4090`, `RTX 5090`, or `L40S`;
 3. decide whether to upstream the Scope text-mode WebRTC keepalive patch.

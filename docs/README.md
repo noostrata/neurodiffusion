@@ -22,6 +22,7 @@ This directory is the canonical operational documentation for the repo.
 - latest validated MAGI runtime tuple: `hopper_sm80_py310_torch240_cu124_20260217_prebuild1` (full env + full weights archive; see `docs/cloudflare-r2.md` and `docs/video-magi1-observations.md`).
 - latest validated Scope/LongLive runtime tuple: `scope_auto_py312_torch2.9.1_cu128_sm100` (Scope uv env + LongLive/Wan model cache; see `docs/cloudflare-r2.md` and `docs/video-scope-longlive-observations.md`).
 - latest Scope/LongLive realtime snapshot: `B200 x1` reached `24.868 fps` over a 90s WebRTC receive run with synthetic EEG control, and the recorded local output is `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4`.
+- latest cheap Scope/LongLive snapshot: `RTX 4090 x1` generated coherent output but failed realtime at `11.310 fps`; local output is `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4`.
 - latest scripted stream validation snapshot: `A100 80GB x1` tuned run confirmed chunk-boundary cue application (`18/18`) but not near-real-time (`steady p90 TPOC ~6.2s`); details in `docs/video-magi1-observations.md`.
 - latest one-shot quality validation snapshot: `A100 80GB x1` low-cost profile produced full `30.0s` / `720` frame output (`/Users/xenochain/Downloads/magi_try.mp4`); details in `docs/video-magi1-observations.md`.
 - `scripts/vast/*.sh|*.py` — current Vast GPU offer discovery, selection, instance lifecycle, SSH resolution, and teardown automation.
@@ -32,6 +33,7 @@ This directory is the canonical operational documentation for the repo.
 - `scripts/cloudflare/prebuild_bundle.py` + `VideoDiffusion/publish_r2_prebuild_model.sh` + `VideoDiffusion/restore_r2_prebuild_model.sh` — runtime tuple publish/restore pipeline (`--mode auto|tuple|image`) for MAGI, Krea, and Scope.
 - `VideoDiffusion/requirements-magi.lock.txt` + `VideoDiffusion/apt-magi.lock.txt` + `VideoDiffusion/runtime-manifest.schema.json` — deterministic dependency/manifest contracts for prebuild artifacts.
 - `VideoDiffusion/setup_video_runtime.sh` + `VideoDiffusion/run_video_stream.sh` + Scope/Krea/MAGI runtime scripts — unified video model setup/launch path (`VIDEO_MODEL=magi|krea|scope|longlive`, `ATTN_BACKEND=auto|sage|flash|sdpa`).
+- `VideoDiffusion/run_scope_longlive_vast_smoke.sh` — one-command Scope/LongLive Vast smoke: cheap offer selection, provision, R2 restore, WebRTC capture, synthetic EEG, local pullback, structured report, and teardown.
 - `VideoDiffusion/eeg_control/` + `VideoDiffusion/requirements-eeg.txt` — local EEG feature extraction, fake MAGI/Scope control servers, calibration, and prompt controller.
 - `docs/security.md` — secret handling and ignored file patterns.
 - `docs/references.md` — upstream docs and source links.

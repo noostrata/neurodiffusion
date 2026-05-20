@@ -381,7 +381,7 @@ bash VideoDiffusion/restore_r2_prebuild_model.sh \
   --model scope \
   --mode tuple \
   --runtime-tag scope_auto_py312_torch2.9.1_cu128_sm100 \
-  --extract-weights
+  --apply-weights-target VideoDiffusion/.cache/daydream-scope
 SCOPE_AUTO_LOAD=0 bash VideoDiffusion/run_scope_server.sh --host 0.0.0.0 --port 8000 -N
 SCOPE_VACE_ENABLED=false bash VideoDiffusion/load_scope_longlive.sh
 ```
@@ -391,7 +391,8 @@ Scope prebuild boundary:
 1. R2 can store the uv env archive and the model/cache archive.
 2. R2 cannot store a warm GPU process or already-loaded model state; each fresh instance still needs server start plus explicit LongLive load.
 3. The model-aware publish/restore scripts now accept `.tar.gz`, `.tar.zst`, and plain `.tar` tuple archives.
-4. For future Scope publishes, prefer `--weights-compression none` or `--weights-compression zstd` to avoid wasting time gzipping already-compressed model weights.
+4. Scope env restore repairs uv-managed Python links after extraction, because archived venvs can point at a host-local uv CPython path.
+5. For future Scope publishes, prefer `--weights-compression none` or `--weights-compression zstd` to avoid wasting time gzipping already-compressed model weights.
 
 ## Security rules
 

@@ -59,6 +59,29 @@ if [[ "${CREATE_RC}" -ne 0 ]]; then
   echo "[error] vastai create instance failed with exit=${CREATE_RC}." >&2
   exit "${CREATE_RC}"
 fi
+create_succeeded="$(
+  CREATE_OUTPUT_JSON="${CREATE_OUTPUT}" python3 - <<'PY'
+import json
+import os
+
+raw = os.environ["CREATE_OUTPUT_JSON"].strip()
+try:
+    payload = json.loads(raw)
+except Exception:
+    payload = None
+
+if isinstance(payload, dict) and payload.get("success") is True:
+    print("1")
+elif "failed with error" in raw.lower() or "no_such_ask" in raw.lower():
+    print("0")
+else:
+    print("1" if payload is not None else "0")
+PY
+)"
+if [[ "${create_succeeded}" != "1" ]]; then
+  echo "[error] vastai create instance did not succeed; refusing to parse an instance id from error output." >&2
+  exit 1
+fi
 
 extract_instance_id() {
   CREATE_OUTPUT_JSON="${CREATE_OUTPUT}" python3 - <<'PY'
@@ -145,9 +168,10 @@ echo "[vast-provision] instance id=${INSTANCE_ID}"
 
 READY="0"
 LAST_STATUS=""
+START_ATTEMPTED="0"
 while [[ ${SECONDS} -lt ${deadline} ]]; do
   instances_json="$(vastai show instances --raw)"
-  status="$(
+  instance_state="$(
     INSTANCES_JSON="${instances_json}" python3 - "${INSTANCE_ID}" <<'PY'
 import json
 import os
@@ -159,18 +183,32 @@ for row in instances if isinstance(instances, list) else []:
     if not isinstance(row, dict):
         continue
     if str(row.get("id") or row.get("instance_id") or row.get("contract_id") or "") == target:
-        print(str(row.get("actual_status") or row.get("status") or "").strip())
+        values = [
+            str(row.get("actual_status") or row.get("status") or "").strip(),
+            str(row.get("cur_state") or "").strip(),
+            str(row.get("intended_status") or "").strip(),
+            str(row.get("status_msg") or "").replace("\n", " ").replace("\t", " ").strip(),
+        ]
+        print("\t".join(values))
         raise SystemExit(0)
-print("")
+print("\t\t\t")
 PY
   )"
+  IFS=$'\t' read -r status cur_state intended_status status_msg <<< "${instance_state}"
   LAST_STATUS="${status}"
   if [[ "${status}" == "running" ]]; then
     READY="1"
     printf "%s\n" "${instances_json}" > "${OUT_JSON}"
     break
   fi
-  echo "[vast-provision] waiting status=${status:-unknown}"
+  if [[ "${START_ATTEMPTED}" != "1" ]] && \
+     [[ "${status}" == "stopped" || "${cur_state}" == "stopped" || "${intended_status}" == "stopped" ]] && \
+     [[ "${status_msg}" == *"Successfully loaded"* ]]; then
+    echo "[vast-provision] image loaded but instance is stopped; requesting start."
+    vastai start instance "${INSTANCE_ID}" --raw || true
+    START_ATTEMPTED="1"
+  fi
+  echo "[vast-provision] waiting status=${status:-unknown} cur_state=${cur_state:-unknown} intended=${intended_status:-unknown}"
   sleep "${POLL_INTERVAL_S}"
 done
 

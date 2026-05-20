@@ -207,6 +207,48 @@ extract_archive() {
   esac
 }
 
+repair_restored_venv_python() {
+  local venv_dir="$1"
+  local cfg="${venv_dir}/pyvenv.cfg"
+  if [[ ! -d "${venv_dir}/bin" || ! -f "${cfg}" ]]; then
+    return
+  fi
+
+  local py_version=""
+  py_version="$(
+    python3 - "${cfg}" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+for pattern in (r"^version_info\s*=\s*([0-9]+\.[0-9]+\.[0-9]+)", r"^version\s*=\s*([0-9]+\.[0-9]+\.[0-9]+)"):
+    match = re.search(pattern, text, re.MULTILINE)
+    if match:
+        print(match.group(1))
+        raise SystemExit(0)
+raise SystemExit(0)
+PY
+  )"
+
+  local uv_python=""
+  if [[ -n "${py_version}" ]] && command_exists uv; then
+    uv python install "${py_version}" >/dev/null 2>&1 || true
+    uv_python="$(uv python find "${py_version}" 2>/dev/null || true)"
+  fi
+
+  if [[ ! -x "${venv_dir}/bin/python" && -n "${uv_python}" && -x "${uv_python}" ]]; then
+    ln -sf "${uv_python}" "${venv_dir}/bin/python"
+    echo "[restore] repaired venv python -> ${uv_python}"
+  fi
+  if [[ ! -e "${venv_dir}/bin/python3" && -x "${venv_dir}/bin/python" ]]; then
+    ln -sf python "${venv_dir}/bin/python3"
+  fi
+  if [[ -n "${py_version}" && ! -e "${venv_dir}/bin/python${py_version%.*}" && -x "${venv_dir}/bin/python" ]]; then
+    ln -sf python "${venv_dir}/bin/python${py_version%.*}"
+  fi
+}
+
 restore_tuple_from() {
   local out_dir="$1"
   local env_archive
@@ -222,6 +264,7 @@ restore_tuple_from() {
     rm -rf "${APPLY_VENV_TARGET}"
     mkdir -p "${APPLY_VENV_TARGET}"
     extract_archive "${env_archive}" "${APPLY_VENV_TARGET}" --strip-components=1
+    repair_restored_venv_python "${APPLY_VENV_TARGET}"
     echo "[restore] venv restored to ${APPLY_VENV_TARGET}"
   fi
 

@@ -28,7 +28,7 @@ DEFAULT_QUERY_BY_MODEL = {
     "scope": (
         "verified=True datacenter=True reliability>0.99 rentable=True "
         "num_gpus>=1 gpu_ram>=24 disk_space>200 disk_bw>1000 "
-        "inet_up>500 inet_down>500 direct_port_count>=2"
+        "inet_up>500 inet_down>500 direct_port_count>=2 cuda_max_good>=12.8"
     ),
 }
 

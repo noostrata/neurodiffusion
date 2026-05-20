@@ -158,6 +158,24 @@ Cost interpretation:
 2. The next cost optimization is to retest the same R2 tuple on `RTX 4090`, `RTX 5090`, or `L40S`.
 3. If those hold `>=24 fps` at `320x576`, they should replace B200 as the default art-loop GPU.
 
+### Vast Scope/LongLive RTX 4090 smoke (2026-05-20)
+
+Paid run; instance destroyed after local pullback.
+
+| Field | Value |
+| --- | ---: |
+| GPU | `RTX 4090 x1` |
+| Observed total rate after launch | `$0.8685185185185185/h` |
+| Realtime result | `11.310 fps` over a 30s WebRTC receive run |
+| First frame latency | `2.480s` |
+| Local output | `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4` |
+
+Cost/performance interpretation:
+
+1. 4090 is much cheaper than B200, but it failed the `>=24 fps` realtime gate at `320x576`.
+2. It is still useful for protocol, artifact-pullback, and visual-quality checks.
+3. The next cost target is `RTX 5090`, `L40S`, or another higher-throughput single-GPU tier when available.
+
 ### Prime managed disk rates in `eu_north` (USD / GB-hour)
 
 | Provider sample | Rate |
@@ -200,6 +218,7 @@ Interpretation:
 | `1x Vast H200 sampled 2026-05-14` | `$0.328` | `$0.657` | `$0.985` |
 | `Vast A100 x8 listing sampled 2026-05-14` | `$0.978` | `$1.956` | `$2.934` |
 | `1x Vast B200 Scope run sampled 2026-05-15` | `$0.666` | `$1.332` | `$1.997` |
+| `1x Vast RTX 4090 Scope run sampled 2026-05-20` | `$0.145` | `$0.290` | `$0.434` |
 
 ## Recent empirical publish run (MAGI tuple)
 

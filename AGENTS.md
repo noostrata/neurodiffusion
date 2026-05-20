@@ -87,7 +87,9 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
   - `VideoDiffusion/run_scope_server.sh`
   - `VideoDiffusion/load_scope_longlive.sh`
   - `VideoDiffusion/scope_webrtc_benchmark.py`
+  - `VideoDiffusion/run_scope_longlive_vast_smoke.sh`
 - Latest validated Scope tuple: `scope_auto_py312_torch2.9.1_cu128_sm100` for B200 / SM100.
+- Latest cheap Scope result: `RTX 4090 x1` generates valid output but is not realtime at `320x576` (`11.310 fps`).
 - R2 prebuild can restore the Scope uv env and LongLive/Wan model cache; it cannot preserve a live loaded GPU model.
 - For a fast fresh boot: clone repo, run `SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh`, restore the Scope tuple, start with `SCOPE_AUTO_LOAD=0`, then load LongLive with `SCOPE_VACE_ENABLED=false`.
 - `VideoDiffusion/setup_scope.sh` applies repo patches from `VideoDiffusion/patches/daydream-scope/` by default. Use `SCOPE_APPLY_PATCHES=0` only when intentionally testing unmodified upstream Scope.
@@ -98,6 +100,7 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - Use `VideoDiffusion/eeg_control/fake_scope_server.py` and `python3 VideoDiffusion/eeg_control/selftest.py` before any paid Scope run.
 - Do not attempt to embed WebRTC inside the EEG loop. Let Scope UI or a browser/WebRTC client own video display; the EEG loop owns control.
 - For headless GPU validation, use `VideoDiffusion/scope_webrtc_benchmark.py` and synthetic EEG concurrently, then pull the recorded MP4 and sampled frames before teardown.
+- For paid cheap-GPU validation, prefer `VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance`; it queries/selects, provisions, restores, captures, pulls artifacts, writes `run_report.json`, and tears down by default.
 
 ## Local Artifact Rule
 

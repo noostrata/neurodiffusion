@@ -11,7 +11,7 @@ Policy decision for this repo:
    - `B200 -> flash-attn`
    - `H100/H200/GH200/L40S/RTX-Ada/RTX5xxx -> SageAttention`
    - fallback: `sdpa`
-3. Scope/LongLive is the first realtime EEG validation path. B200 has validated the control path; the next optimization is finding the cheapest GPU class that still holds realtime.
+3. Scope/LongLive is the first realtime EEG validation path. B200 has validated the control path; RTX 4090 did not hold realtime at `320x576`.
 4. Vast + Cloudflare R2 is the current provider/storage architecture; Prime references below are legacy context unless explicitly revived.
 
 ## Scope / LongLive acceleration policy
@@ -41,9 +41,11 @@ Restore order for a fast next boot:
 
 1. clone repo on the Vast host;
 2. run `SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh` to clone Scope and apply patches;
-3. restore `scope_auto_py312_torch2.9.1_cu128_sm100` with `VideoDiffusion/restore_r2_prebuild_model.sh --model scope`;
+3. restore `scope_auto_py312_torch2.9.1_cu128_sm100` with `VideoDiffusion/restore_r2_prebuild_model.sh --model scope --apply-weights-target VideoDiffusion/.cache/daydream-scope`;
 4. start with `SCOPE_AUTO_LOAD=0`;
 5. load LongLive explicitly with `SCOPE_VACE_ENABLED=false`.
+
+For paid validation, `VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance` automates that sequence plus offer selection, WebRTC capture, synthetic EEG control, local artifact pullback, `run_report.json`, and teardown.
 
 Prebuild boundary:
 
@@ -59,9 +61,15 @@ Current publish controls:
 
 Next paid validation should optimize for low hourly burn:
 
-1. `RTX 4090 24GB` or `RTX 5090 32GB` if available and reliable;
+1. `RTX 5090 32GB` if available and reliable;
 2. `L40S` / `RTX 6000 Ada` for more memory headroom;
 3. H100/H200/B200 only when cheaper cards fail the realtime acceptance gate.
+
+Latest cheap-GPU result:
+
+1. `RTX 4090 x1` generated coherent output at `320x576`.
+2. It only received `11.310 fps`, with first frame at `2.480s`.
+3. Treat 4090 as a protocol/quality-check tier for this profile unless a lower-resolution experiment proves otherwise.
 
 ## 1) Why this policy
 

@@ -1,6 +1,6 @@
 # Vast.ai
 
-_Last updated: 2026-05-14_
+_Last updated: 2026-05-20_
 
 Vast.ai is the current active GPU provider path for this repository.
 Prime Intellect files remain in the repo for historical compatibility, but new provider work should target Vast.
@@ -80,6 +80,7 @@ Do not place that tuple on H100/H200; the 2026-05-14 H200 smoke reached VAE deco
 
 The default search requires verified datacenter hosts, high reliability, enough disk, enough network, and direct ports.
 Override with `--query '<vast search expression>'` when a run needs a narrower GPU target.
+The Scope default query also requires `cuda_max_good>=12.8` because the current Scope tuple is CUDA `12.8`.
 
 For the current `sm80` tuple, the safest query is A100-only:
 
@@ -124,6 +125,8 @@ ssh -i "$VAST_SSH_KEY_PATH" -p "$VAST_SSH_PORT" "$VAST_SSH_USER@$VAST_SSH_HOST"
 
 If proxy and direct SSH both return `Connection refused` after a short stabilization window, cut the host.
 If SSH reaches the host but returns `Permission denied (publickey)`, treat it as an auth-path issue first.
+If Vast reports image load complete but leaves the contract stopped, `scripts/vast/provision_video_instance.sh` now sends one `vastai start instance <id>` request during provisioning.
+If a selected offer disappears with `no_such_ask`, the provisioner now fails before parsing numeric error codes as instance ids; rerun offer query/selection instead of waiting.
 
 ## Runtime bootstrap
 
@@ -183,6 +186,44 @@ Default smoke profile:
 - `OFFLOAD_T5_CACHE=true`
 
 Use this wrapper for quick bring-up before attempting realtime streaming or EEG-driven prompt schedules.
+
+## Scope/LongLive realtime smoke path
+
+For cheap realtime validation, prefer the Scope wrapper:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_scope_longlive_vast_smoke.sh \
+  --create-instance \
+  --gpu-regex 'RTX.?4090|RTX.?5090|L40S' \
+  --max-dph 1.50 \
+  --duration-s 30
+```
+
+The wrapper:
+
+1. queries and selects a cheap Scope-capable offer;
+2. provisions a direct-SSH Vast instance only when `--create-instance` is passed;
+3. syncs the current repo state to `/workspace/neurodiffusion`;
+4. installs minimal host tools, `uv`, and media utilities when missing;
+5. clones/patches Scope with `SCOPE_SKIP_BUILD=1`;
+6. restores the R2 Scope tuple into the Scope uv env and `VideoDiffusion/.cache/daydream-scope`;
+7. starts Scope with `SCOPE_AUTO_LOAD=0`;
+8. loads LongLive with `SCOPE_VACE_ENABLED=false`;
+9. records WebRTC output while synthetic EEG drives the Scope OSC sink;
+10. pulls MP4, sampled frames, logs, and `run_report.json` to `/Users/xenochain/Downloads/<run_id>/`;
+11. destroys a wrapper-created instance by default.
+
+Acceptance is encoded in `run_report.json`:
+
+- frames received;
+- receive FPS `>=24`;
+- first-frame latency `<=2s`;
+- at least one synthetic EEG Scope OSC update;
+- non-empty local MP4.
+
+Use `--keep-instance` only for intentional interactive debugging.
+If using the B200-published tuple on cheaper GPUs, the wrapper deliberately passes the runtime mismatch path because Scope tuple reuse is env/cache-oriented rather than MAGI custom-kernel-oriented.
 
 ## Persistence
 

@@ -20,7 +20,7 @@ Validated:
 Still not validated:
 
 1. real OpenBCI hardware input;
-2. cheaper `RTX 4090` / `RTX 5090` / `L40S` Scope throughput;
+2. cheaper `RTX 5090` / `L40S` Scope throughput;
 3. long-duration gallery/session stability beyond the 90s synthetic EEG run.
 
 Latest empirical reference:
@@ -28,6 +28,7 @@ Latest empirical reference:
 - `docs/video-scope-longlive-observations.md`
 - runtime tuple: `scope_auto_py312_torch2.9.1_cu128_sm100`
 - recorded local video: `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4`
+- latest cheap-GPU result: `RTX 4090 x1` generated coherent output but failed realtime at `11.310 fps` for `320x576`.
 
 ## Why Scope + LongLive
 
@@ -110,7 +111,7 @@ bash VideoDiffusion/restore_r2_prebuild_model.sh \
   --model scope \
   --mode tuple \
   --runtime-tag scope_auto_py312_torch2.9.1_cu128_sm100 \
-  --extract-weights
+  --apply-weights-target VideoDiffusion/.cache/daydream-scope
 SCOPE_AUTO_LOAD=0 bash VideoDiffusion/run_scope_server.sh --host 0.0.0.0 --port 8000 -N
 SCOPE_VACE_ENABLED=false bash VideoDiffusion/load_scope_longlive.sh
 ```
@@ -271,21 +272,68 @@ python3 scripts/vast/select_video_offer.py \
 
 For first cheap follow-up Scope/LongLive validation, prefer `RTX 4090 24GB`, `RTX 5090 32GB`, or `L40S 48GB`-class offers before H100/H200/B200.
 Do not create an instance unless the user explicitly authorizes a paid run.
+The default Scope offer query requires `cuda_max_good>=12.8` because the current tuple is CUDA `12.8`.
+
+## One-command Vast smoke
+
+Preferred paid validation entry point:
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_scope_longlive_vast_smoke.sh \
+  --create-instance \
+  --gpu-regex 'RTX.?4090|RTX.?5090|L40S' \
+  --max-dph 1.50 \
+  --duration-s 30
+```
+
+Lower-resolution probe when testing whether a cheap GPU has any realtime operating point:
+
+```bash
+bash VideoDiffusion/run_scope_longlive_vast_smoke.sh \
+  --create-instance \
+  --gpu-regex 'RTX.?4090' \
+  --max-dph 1.50 \
+  --height 192 \
+  --width 320 \
+  --duration-s 30
+```
+
+Safe behavior:
+
+1. Without `--create-instance`, the script requires `VAST_INSTANCE_ID` and will not create paid compute.
+2. With `--create-instance`, it queries/selects an offer, provisions a Vast SSH instance, and destroys that instance on exit unless `--keep-instance` is passed.
+3. The R2 secret is copied to the instance only for tuple restore and removed during cleanup.
+4. Output video, sampled frames, logs, and `run_report.json` are pulled under `/Users/xenochain/Downloads/<run_id>/`.
+5. A flat video copy is also written to `/Users/xenochain/Downloads/<run_id>_webrtc_capture.mp4`.
+
+Acceptance gate:
+
+1. WebRTC receives frames.
+2. Receive FPS is `>=24`.
+3. First frame latency after benchmark start is `<=2s`.
+4. Synthetic EEG sends at least one Scope OSC update.
+5. Local MP4 exists and is non-empty.
+
+For B200-published tuple reuse on cheaper GPUs, the script defaults `SCOPE_VAST_ALLOW_RUNTIME_GPU_MISMATCH=1`.
+That is intentional for Scope because the tuple mostly stores a uv env and model cache, not MAGI-style arch-specific custom kernels.
+If a cheaper card fails restore/runtime, rerun with `--download-fallback` to rebuild the model cache path on that host.
 
 ## Validated Vast live-run checklist
 
 1. Query Scope offers and choose a cost target.
 2. Provision one Vast instance with port `8000` exposed.
 3. Sync the repo to the instance.
-4. Run `SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh` and restore the R2 tuple, or run full `VIDEO_MODEL=scope bash VideoDiffusion/setup_video_runtime.sh` when rebuilding from scratch.
-5. Run `bash VideoDiffusion/download_scope_models.sh` only if the R2 model cache was not restored or intentionally needs refresh.
-6. Start `SCOPE_AUTO_LOAD=0 VIDEO_MODEL=scope bash VideoDiffusion/run_video_stream.sh`.
-7. Run `SCOPE_VACE_ENABLED=false bash VideoDiffusion/load_scope_longlive.sh`.
-8. Run `VideoDiffusion/scope_webrtc_benchmark.py` or open Scope UI/WebRTC output on port `8000`.
-9. Run mock EEG into `--sink scope`.
-10. Record latency notes, output video, sampled frames, and logs.
-11. Pull local video/log artifacts.
-12. Tear down the instance and verify `vastai show instances --raw`.
+4. Prefer `bash VideoDiffusion/run_scope_longlive_vast_smoke.sh --create-instance` for the full automated path.
+5. If running manually, run `SCOPE_SKIP_BUILD=1 bash VideoDiffusion/setup_scope.sh` and restore the R2 tuple with `--apply-weights-target VideoDiffusion/.cache/daydream-scope`, or run full `VIDEO_MODEL=scope bash VideoDiffusion/setup_video_runtime.sh` when rebuilding from scratch.
+6. Run `bash VideoDiffusion/download_scope_models.sh` only if the R2 model cache was not restored or intentionally needs refresh.
+7. Start `SCOPE_AUTO_LOAD=0 VIDEO_MODEL=scope bash VideoDiffusion/run_video_stream.sh`.
+8. Run `SCOPE_VACE_ENABLED=false bash VideoDiffusion/load_scope_longlive.sh`.
+9. Run `VideoDiffusion/scope_webrtc_benchmark.py` or open Scope UI/WebRTC output on port `8000`.
+10. Run mock EEG into `--sink scope`.
+11. Record latency notes, output video, sampled frames, and logs.
+12. Pull local video/log artifacts.
+13. Tear down the instance and verify `vastai show instances --raw`.
 
 ## Latest B200 Results
 
@@ -298,6 +346,17 @@ Observed on 2026-05-15:
 5. Local MP4: `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4`.
 6. R2 tuple: `scope_auto_py312_torch2.9.1_cu128_sm100`.
 7. Current fresh-instance lower bound after tuple restore is still server start plus load: about `7s + 19s` in the B200 run, before WebRTC first-frame latency.
+
+## Latest RTX 4090 Result
+
+Observed on 2026-05-20:
+
+1. `RTX 4090 x1` at `320x576` generated coherent neon tunnel output.
+2. WebRTC receive: `322` frames, `11.310 fps`, first frame `2.480s`.
+3. Synthetic EEG emitted `3` state changes during the run.
+4. Local MP4: `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4`.
+5. Local frame: `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_frame_000024.png`.
+6. Result: fail for realtime at `320x576`; keep 4090 only for protocol/quality checks or a future lower-resolution experiment.
 
 ## Sources
 

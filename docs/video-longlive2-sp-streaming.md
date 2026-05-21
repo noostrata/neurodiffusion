@@ -309,11 +309,24 @@ Current paid evidence:
 Current state:
 
 1. active Vast instances: `0`;
-2. current Vast credit after the restore-validation attempt: about `$0.64`;
-3. current H200 x2 offers in the refreshed scan start at about `$7.743/h`;
+2. current Vast credit after the restore-validation attempt: `$0.639956`;
+3. last observed H200 x2 offers in the prior refreshed scan started at about `$7.743/h`; re-query before spending;
 4. a LongLive2 MP4 and a published BF16 SP R2 tuple exist;
 5. the R2 tuple is `published_tuple`, not yet `validated_restore_tuple`, because the fixed Wan-link restore path still needs a fresh paid rerun;
 6. no `sp1` vs `sp2` speedup result exists yet.
+7. local artifact retention is telemetry-first; historical Scope/LongLive media was pruned after QA and only intentional proof clips should remain.
+
+## Current Ordered Plan
+
+The live checklist is `longlive2plan.md`. The short version is:
+
+1. No-spend hygiene: keep `bash scripts/check.sh`, `git diff --check`, `vastai show instances --raw`, and `python3 scripts/prune_artifacts.py` clean before any paid work.
+2. Budget gate: do not launch H200 x2 until credit can safely cover a tight `$2.50-$3.00` restore-validation window plus teardown margin.
+3. Restore validation: run one H200 x2 `bf16_sp` restore-only smoke with `--download-fallback` off to prove the R2 tuple and Wan-link hook.
+4. SP benchmark: only after restore passes, compare `sp_size=1` and `sp_size=2` under same prompt/seed/resolution/frame count.
+5. Decision: stop LongLive2 as a live path below `1.3x` speedup, keep it research-only at `1.3x-1.6x`, and design a persistent runner only at `>=1.6x`.
+6. Live fallback: keep Daydream Scope + LongLive as the realtime EEG path until LongLive2 beats it on speed, cost, and visual acceptability.
+7. Blackwell/NVFP4: defer until BF16 SP evidence or explicit budget justifies it; do not chase NVFP4 speedups on H100/H200.
 
 ## Test Plan
 

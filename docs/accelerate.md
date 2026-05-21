@@ -14,6 +14,7 @@ Policy decision for this repo:
 3. Scope/LongLive is the first realtime EEG validation path. B200 has validated the control path; RTX 4090 did not hold realtime at `320x576`.
 4. Vast + Cloudflare R2 is the current provider/storage architecture; Prime references below are legacy context unless explicitly revived.
 5. LongLive2 sequence-parallel inference is the experimental one-stream multi-GPU path. A cold H200 x2 BF16 SP render now works and its tuple is published to R2; the restored fast path still needs one fresh validation after the Wan-link restore patch.
+6. Local artifact retention is telemetry-first: keep reports/logs/manifests and prune historical MP4/PNG/JPG media after QA unless a proof clip or deliverable is explicitly needed.
 
 ## Scope / LongLive acceleration policy
 
@@ -128,6 +129,14 @@ Planned tuple families:
 | BF16 SP | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | `H100/H200 x2` | prove one-stream two-rank inference |
 | NVFP4 S2 SM100 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1` | `B200/GB200 x1-2` | maximum speed path |
 | NVFP4 S2 SM120 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` | `RTX 50/60 x1-2` | cheaper Blackwell candidate after SM100 proof |
+
+Current LongLive2 acceleration order:
+
+1. Validate the existing BF16 SP R2 tuple with one restore-only H200 x2 render and no HF download fallback.
+2. If restore passes, run a same-seed `sp_size=1` vs `sp_size=2` benchmark on the same lane.
+3. Promote LongLive2 toward a persistent live runner only if the two-rank speedup is at least `1.6x`; below `1.3x`, stop treating it as a live path.
+4. Keep Scope/LongLive as the realtime EEG fallback while LongLive2 remains offline/experimental.
+5. Defer NVFP4 until Blackwell budget exists or the BF16 SP result justifies that lane.
 
 Latest H200 x2 BF16 SP result:
 

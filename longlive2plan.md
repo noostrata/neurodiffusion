@@ -104,8 +104,8 @@ Last no-spend check: 2026-05-21.
 
 ```text
 active Vast instances: []
-Vast credit: about $0.64
-current viable LongLive2 Hopper offer: H200 x2 at about $7.743/hour
+Vast credit: $0.639956
+last observed viable LongLive2 Hopper offer: H200 x2 at about $7.743/hour
 ```
 
 Approximate H200 x2 compute cost:
@@ -150,6 +150,8 @@ Ready locally:
 18. `VideoDiffusion/download_longlive2_models.sh` now downloads Wan2.2 base assets by default and links them into the upstream `wan_models/Wan2.2-TI2V-5B` path.
 19. A paid H200 x2 BF16 SP render succeeded and published the first LongLive2 BF16 SP tuple to R2.
 20. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates the LongLive2 Wan runtime symlink after tuple restore.
+21. Local artifact retention is now telemetry-first: historical Scope/LongLive media was pruned, the archive is about `3.1M`, and the only retained media is the tiny LongLive2 H200 x2 proof clip.
+22. `scripts/prune_artifacts.py --delete` records SHA-256/size manifests before deleting disposable MP4/PNG/JPG files.
 
 Not ready / not yet proven:
 
@@ -161,6 +163,127 @@ Not ready / not yet proven:
 
 This means the first paid milestone is complete for cold BF16 SP render and tuple publication, but the next milestone is fresh restore validation.
 The first restore validation proved R2 fetch/extract timing, then exposed a missing Wan symlink in the restore path; the code now patches that boundary, but the fixed path has not been rerun because the remaining Vast credit is too low for another safe H200 x2 validation.
+
+## Detailed Plan From Current State
+
+This is the ordered plan from what we have learned so far.
+
+### A. Keep The Repo Canonical And Cheap
+
+Purpose: avoid losing work or spending while the budget is below the paid threshold.
+
+1. Keep `main` as the working branch, but do not pull/rebase/push blindly while it is ahead/behind `origin/main`.
+2. Run only no-spend checks until Vast credit is at least the restore-validation threshold.
+3. Keep local artifacts in `artifacts/`, not `Downloads`.
+4. Keep telemetry and reports; prune historical media after QA with `python3 scripts/prune_artifacts.py --delete`.
+5. Before any paid run, confirm `vastai show instances --raw` returns `[]`.
+
+Done when:
+
+1. `bash scripts/check.sh` passes;
+2. `git diff --check` passes;
+3. `python3 scripts/prune_artifacts.py` reports `candidate_count: 0`;
+4. docs and `AGENTS.md` agree on the current run path.
+
+### B. Validate The Published LongLive2 R2 Tuple
+
+Purpose: prove the fast path, not rebuild the world.
+
+The next paid run is a restore-only H200 x2 BF16 SP render:
+
+1. use `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1`;
+2. use `bf16_sp`, `sp_size=2`, `dp_size=1`;
+3. use `480x832`, `32` frames, `seed=0`;
+4. keep `--download-fallback` off;
+5. cap max alive around `20 min`;
+6. require enough credit for about `$2.50-$3.00` spend plus teardown margin.
+
+This run answers one question:
+
+```text
+Can a fresh H200 x2 instance restore the R2 tuple, recreate the Wan symlink, and render without HF downloads or dependency rebuilds?
+```
+
+Pass means:
+
+1. tuple restore completes;
+2. `VideoDiffusion/.vendors/LongLive2/wan_models/Wan2.2-TI2V-5B` exists after restore;
+3. `torchrun` starts two ranks;
+4. one output stream is produced;
+5. per-GPU telemetry shows both cards were active;
+6. local report/log artifacts are pulled back;
+7. the instance is destroyed.
+
+Fail means:
+
+1. do not republish the tuple;
+2. preserve logs/reports;
+3. update this ledger with the exact failure phase;
+4. teardown and verify active instances are `[]`.
+
+### C. Measure Whether Two GPUs Actually Help
+
+Purpose: decide whether LongLive2 is worth pursuing for the live art system.
+
+Only run this after the restore-only smoke passes. Use the same host/runtime if possible to avoid another setup tax.
+
+Compare:
+
+1. `sp_size=1`, `dp_size=1`, one rank;
+2. `sp_size=2`, `dp_size=1`, two ranks;
+3. same prompt, seed, frame count, resolution, and GPU family.
+
+Decision rule:
+
+1. `<1.3x` speedup: stop LongLive2 SP as a live path for now.
+2. `1.3x-1.6x`: keep it for offline/research output, not the default live path.
+3. `>=1.6x`: design the persistent runner.
+
+Do not start live EEG integration before this benchmark. Without speedup, a two-GPU live runner is extra complexity without enough evidence.
+
+### D. Keep Scope/LongLive As The Live Fallback
+
+Purpose: keep the art project runnable while LongLive2 remains experimental.
+
+The current proven live path is still Daydream Scope + LongLive:
+
+1. B200 x1 proved realtime at `320x576` with synthetic EEG.
+2. H200 x1 passed `320x576` and same-instance sweep found `352x576` as the best validated realtime edge.
+3. RTX 4090 generated valid output but failed realtime even at low resolution.
+4. EEG should continue to drive Scope through OSC while WebRTC owns display.
+
+Operationally:
+
+1. use Scope/LongLive for live demonstrations;
+2. use LongLive2 for one-stream multi-GPU research until the speedup benchmark says otherwise;
+3. do not describe LongLive2 offline `torchrun` as a live EEG/WebRTC system.
+
+### E. Blackwell/NVFP4 Comes Later
+
+Purpose: avoid repeating the Hopper/NVFP4 mismatch warned about in the paper.
+
+Do not test NVFP4 on H100/H200 as a performance lane.
+
+Blackwell work starts only after one of these is true:
+
+1. BF16 SP shows enough value to justify higher-end experiments;
+2. the user explicitly approves a Blackwell budget;
+3. a cheap reliable B200/GB200/RTX 50-class offer appears and the run is bounded.
+
+### F. Build Live LongLive2 Only If The Evidence Supports It
+
+The persistent LongLive2 runner is a later engineering project.
+
+It needs:
+
+1. long-lived `torchrun` ranks;
+2. a rank-0 control server;
+3. stable EEG state events;
+4. prompt/block-boundary scheduling;
+5. KV/context transition handling;
+6. output streaming or low-latency file handoff.
+
+Do not build this until the restore and `sp1`/`sp2` benchmark pass.
 
 ## Live Run Ledger
 
@@ -194,6 +317,8 @@ Use this section for short operator notes that explain why the plan changed.
 - 2026-05-21: Fourth paid H200 x2 attempt proved SP initialization and failed at missing Wan2.2 base weights. Changed the LongLive2 downloader and paid wrapper so Wan base assets are included by default and linked into the upstream relative path.
 - 2026-05-21: Fifth paid H200 x2 attempt succeeded end-to-end on the cold build/download path, produced a local nonblank `832x480` MP4, published the BF16 SP tuple to R2, pulled artifacts locally, and tore down the instance.
 - 2026-05-21: First fresh restore validation restored the R2 tuple in `559s`, then failed because tuple extraction did not recreate LongLive2's vendor-local Wan symlink. Patched `VideoDiffusion/restore_r2_prebuild_model.sh` so future restores link `VideoDiffusion/.cache/longlive2/wan_models/Wan2.2-TI2V-5B` into `VideoDiffusion/.vendors/LongLive2/wan_models/Wan2.2-TI2V-5B`.
+- 2026-05-21: Pruned disposable historical Scope/LongLive MP4/PNG/JPG media after QA, reducing local `artifacts/` from `171M` to `3.1M`. Added `scripts/prune_artifacts.py` and updated docs so telemetry/reports/manifests are the durable evidence while media is retained only as explicit proof clips or deliverables.
+- 2026-05-21: Expanded the next-step plan into ordered no-spend, restore-validation, `sp1`/`sp2` benchmark, Scope fallback, Blackwell, and later live-runner phases.
 
 ## Step-By-Step Checklist
 
@@ -465,6 +590,7 @@ ffprobe -v error -show_format -show_streams /absolute/path/to/output.mp4
 - [ ] If an MP4 exists, sample frames/contact sheet using the existing report tooling where available.
 - [ ] Open at least one sampled frame locally and check whether it is nonblank and visually plausible.
 - [ ] If the output is static, corrupted, blank, or only a loading/error screen, mark the smoke as failed even if the process exited `0`.
+- [ ] After QA and docs updates, run `python3 scripts/prune_artifacts.py --delete` unless the MP4 is intentionally retained as a proof clip or deliverable.
 - [ ] Update `docs/video-longlive2-sp-streaming.md` with the artifact paths and QA result.
 - [ ] Update this file's `Live Run Ledger` and telemetry table.
 
@@ -762,7 +888,7 @@ A first smoke passes only if all are true:
 4. exactly one output MP4 stream is written.
 5. the MP4, config, logs, telemetry, and report are pulled to the local machine.
 6. report includes `ffprobe` metadata when local media tools can inspect it.
-7. sampled frame/contact sheet exists when output is available.
+7. sampled frame/contact sheet is generated and inspected when output is available; it may be pruned after QA if the report records the result.
 8. `vastai show instances --raw` returns `[]` after teardown.
 
 ## Second Paid Step: Decisive SP Benchmark
@@ -877,10 +1003,11 @@ Before saying "go", confirm:
 3. `bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` passes.
 4. `vastai show instances --raw` returns `[]`.
 5. Vast credit is enough for the intended phase: about `$2.50-$3.00` for one tight H200 x2 restore validation, or `$7.00+` for a cold build/publish rerun.
-6. a current H100/H200 x2 offer exists at `<= $8.00/h`.
+6. a fresh H100/H200 x2 offer query finds an offer at `<= $8.00/h`.
 7. the run uses `bf16_sp`, not NVFP4, on H100/H200.
 8. the next validation uses restore with no HF download fallback; use `--no-restore --download-fallback` only when deliberately rebuilding or replacing the tuple.
 9. the run uses explicit modest first-smoke geometry, currently `480x832` and `32` frames.
 10. the wrapper max-alive/budget guards are enabled and the operator watches for obvious stuck setup.
+11. artifact retention is telemetry-first: prune disposable media after QA and keep only reports/logs/manifests plus intentional proof clips.
 
 If those conditions hold, the repo is ready for the patched restore validation run.

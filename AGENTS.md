@@ -116,7 +116,7 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - For same-GPU resolution edge finding, prefer `VideoDiffusion/run_scope_longlive_vast_sweep.sh --create-instance`; it creates one instance, restores once, starts Scope once, then writes per-resolution `run_report.json` files plus `sweep_report.json`.
 - For cross-GPU offer validation, use `VideoDiffusion/run_scope_longlive_vast_matrix.sh --create-instance`; it retries fresh offers, sweeps GPU tiers and adaptive resolutions, keeps budget/time bounds, writes matrix JSON/CSV/Markdown, and still delegates each paid attempt to the smoke runner for teardown and local artifact pullback.
 - Scope/LongLive paid selection defaults to one-GPU offers. Use `--max-gpu-count 0` only when intentionally allowing multi-GPU listings.
-- Treat telemetry as part of the artifact contract: preserve `run_report.json`, `sweep_report.*`, `matrix_report.*`, `phase_report.json`, `artifact_qa.json`, sampled frames/contact sheets, ffprobe output, invoice/spend notes, and `[scope-vast-ts]` phase markers when available.
+- Treat telemetry as part of the artifact contract: preserve `run_report.json`, `sweep_report.*`, `matrix_report.*`, `phase_report.json`, `artifact_qa.json`, ffprobe output, invoice/spend notes, prune manifests, and `[scope-vast-ts]` phase markers when available. MP4/PNG/JPG media is transient after QA unless intentionally retained as a proof clip or deliverable.
 
 ## LongLive2 Sequence-Parallel Discipline
 

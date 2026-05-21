@@ -306,7 +306,7 @@ If using the B200-published tuple on cheaper GPUs, the wrapper deliberately pass
 LongLive2 sequence-parallel inference is the experimental path for one stream across two GPUs.
 It is not the same as renting a two-GPU host for Scope.
 
-LongLive2 paid bring-up has now produced a cold H200 x2 BF16 SP render, published the BF16 SP tuple to R2, and validated that tuple on a fresh H100 NVL x2 restore render.
+LongLive2 paid bring-up has now produced a cold H200 x2 BF16 SP render, published the BF16 SP tuple to R2, validated that tuple on a fresh H100 NVL x2 restore render, and published a separate RTX 5090 / SM120 NVFP4 tuple after a valid but slow render.
 The LongLive2 paper explicitly says NVFP4 acceleration is Blackwell-only; on A100/H100/H200, the intended compensation path is SP inference.
 Therefore the first Hopper paid lane is `bf16_sp`, not `nvfp4_s2`.
 
@@ -332,7 +332,8 @@ Instance lifecycle:
 10. publish a new tuple to R2 only if the smoke proves reusable imports/builds; use `--publish-r2-on-success` when the publish should happen before automatic teardown;
 11. validate any newly published tuple with a fresh restore run before calling it a default fast path;
 12. rely on the smoke wrapper's bounded retries for idempotent repo upload, R2 secret upload, and artifact pullback if direct SSH briefly refuses connections;
-13. destroy the instance by default and verify `vastai show instances --raw`.
+13. rely on detached logged remote steps for long setup/download/render/publish phases; if a local SSH launch returns nonzero, inspect the remote pid/status/log before assuming the step failed;
+14. destroy the instance by default and verify `vastai show instances --raw`.
 
 Latest LongLive2 telemetry:
 
@@ -344,7 +345,10 @@ Latest LongLive2 telemetry:
 6. First post-top-up retry: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T111231Z/`; selected H100 NVL x2 at `$5.873611111111112/h` and failed before restore because direct SSH refused the repo rsync transfer after remote deps.
 7. Successful fresh restore validation: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T111719Z/`; selected H100 NVL x2 at `$5.873611111111112/h`, restored in `502s`, rendered one nonblank `832x480` MP4, pulled artifacts, and tore down to `[]`.
 8. Benchmark-only run: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T114258Z/`; `sp1` was `0.380357 fps`, `sp2` was `0.252536 fps`, and `speedup_sp2_over_sp1=0.663945`.
-9. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates the Wan symlink, and `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` now retries idempotent transfer phases plus excludes local `.venv` and `artifacts/` from repo rsync.
+9. First RTX 5090 SM120 run: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T153854Z/`; build/download/render succeeded and wrote a nonblank MP4, but post-render reporting failed on a misplaced `run_timing.json`.
+10. Second RTX 5090 SM120 run: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T161410Z/`; manual recovery rendered a nonblank `832x480`, `125` frame MP4, published `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` to R2, pulled artifacts, and tore down to `[]`.
+11. RTX 5090 timing failed realtime: `wall_video_fps=1.151356`, `wall_render_fps=0.294747`, and `wall_fps_ok=false`.
+12. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates the Wan symlink, and `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` now retries idempotent transfer phases, excludes local `.venv` and `artifacts/` from repo rsync, and runs long remote phases as detached logged steps.
 
 Acceptance:
 
@@ -433,7 +437,7 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --max-estimated-spend-usd 3.00
 ```
 
-This uses RTX 5090 x1 / SM120, not B200/GB200. Use SM100 only for a one-GPU B200/GB200 listing; do not rent an x8 B200/GB200 host for the LongLive2 Blackwell smoke. `--blackwell-tier sm120` also sets a `24 fps` wall-clock acceptance threshold in the report. If the first cold build renders a valid nonblank video but misses the FPS gate, the wrapper can still publish the R2 tuple and then exit failed for the realtime verdict.
+This uses RTX 5090 x1 / SM120, not B200/GB200. Use SM100 only for a one-GPU B200/GB200 listing; do not rent an x8 B200/GB200 host for the LongLive2 Blackwell smoke. `--blackwell-tier sm120` also sets a `24 fps` wall-clock acceptance threshold in the report. The first RTX 5090 build rendered and published R2 but failed realtime at `480x832`; do not cold-build again by default. The next paid RTX 5090 step is a restore-only validation of `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1`, then a lower-resolution speed check only if restore is fast enough to be cost-effective.
 
 ## Persistence
 

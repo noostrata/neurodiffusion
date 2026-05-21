@@ -13,12 +13,16 @@ LONGLIVE2_SKIP_BUILD="${LONGLIVE2_SKIP_BUILD:-0}"
 LONGLIVE2_RUNTIME_ENV_FILE="${LONGLIVE2_RUNTIME_ENV_FILE:-${SCRIPT_DIR}/.longlive2_runtime.env}"
 LONGLIVE2_VENV_DIR="${LONGLIVE2_VENV_DIR:-${LONGLIVE2_SRC_DIR}/.venv}"
 LONGLIVE2_CUDA_ARCHS="${LONGLIVE2_CUDA_ARCHS:-}"
+LONGLIVE2_FLASH_ATTN_CUDA_ARCHS="${LONGLIVE2_FLASH_ATTN_CUDA_ARCHS:-}"
 LONGLIVE2_MAX_JOBS="${LONGLIVE2_MAX_JOBS:-}"
+LONGLIVE2_NVCC_THREADS="${LONGLIVE2_NVCC_THREADS:-}"
 LONGLIVE2_BUILD_FLASH_ATTN_FROM_SOURCE="${LONGLIVE2_BUILD_FLASH_ATTN_FROM_SOURCE:-}"
 LONGLIVE2_FLASH_ATTN_REPO_URL="${LONGLIVE2_FLASH_ATTN_REPO_URL:-https://github.com/Dao-AILab/flash-attention.git}"
 LONGLIVE2_FLASH_ATTN_REF="${LONGLIVE2_FLASH_ATTN_REF:-v2.8.3}"
 LONGLIVE2_TRANSFORMERS_VERSION="${LONGLIVE2_TRANSFORMERS_VERSION:-4.57.3}"
 LONGLIVE2_EXTRA_PIP_PACKAGES="${LONGLIVE2_EXTRA_PIP_PACKAGES:-decord}"
+LONGLIVE2_NVFP4_TORCH_VERSION="${LONGLIVE2_NVFP4_TORCH_VERSION:-2.10.0}"
+LONGLIVE2_NVFP4_TORCHVISION_VERSION="${LONGLIVE2_NVFP4_TORCHVISION_VERSION:-0.25.0}"
 
 usage() {
   cat <<EOF
@@ -33,6 +37,10 @@ Options:
   --venv-dir <path>             Python venv path (default: ${LONGLIVE2_VENV_DIR})
   --skip-build                  Clone/config only; do not install dependencies
   --cuda-archs <archs>          Optional CUDA_ARCHS for NVFP4 extension builds
+  --flash-attn-cuda-archs <archs>
+                                  Optional FLASH_ATTN_CUDA_ARCHS for flash-attention source builds
+  --max-jobs <count>            Optional MAX_JOBS for native extension builds
+  --nvcc-threads <count>        Optional NVCC_THREADS for native extension builds
   --build-flash-attn-source     Build flash-attention from pinned source
 EOF
 }
@@ -61,6 +69,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --cuda-archs)
       LONGLIVE2_CUDA_ARCHS="$2"
+      shift 2
+      ;;
+    --flash-attn-cuda-archs)
+      LONGLIVE2_FLASH_ATTN_CUDA_ARCHS="$2"
+      shift 2
+      ;;
+    --max-jobs)
+      LONGLIVE2_MAX_JOBS="$2"
+      shift 2
+      ;;
+    --nvcc-threads)
+      LONGLIVE2_NVCC_THREADS="$2"
       shift 2
       ;;
     --build-flash-attn-source)
@@ -103,12 +123,21 @@ fi
 mkdir -p "$(dirname -- "${LONGLIVE2_SRC_DIR}")"
 if [[ ! -d "${LONGLIVE2_SRC_DIR}/.git" ]]; then
   video_log "Cloning LongLive2 into ${LONGLIVE2_SRC_DIR}."
-  git clone "${LONGLIVE2_REPO_URL}" "${LONGLIVE2_SRC_DIR}"
+  if ! git clone --filter=blob:none "${LONGLIVE2_REPO_URL}" "${LONGLIVE2_SRC_DIR}"; then
+    video_log "Filtered LongLive2 clone failed; retrying full clone."
+    git clone "${LONGLIVE2_REPO_URL}" "${LONGLIVE2_SRC_DIR}"
+  fi
 fi
 
 video_log "Checking out LongLive2 ref ${LONGLIVE2_REPO_REF}."
-git -C "${LONGLIVE2_SRC_DIR}" fetch --all --tags --prune
-git -C "${LONGLIVE2_SRC_DIR}" checkout "${LONGLIVE2_REPO_REF}"
+if ! git -C "${LONGLIVE2_SRC_DIR}" checkout "${LONGLIVE2_REPO_REF}"; then
+  video_log "LongLive2 ref ${LONGLIVE2_REPO_REF} was not present locally; fetching it."
+  if ! git -C "${LONGLIVE2_SRC_DIR}" fetch --filter=blob:none origin "${LONGLIVE2_REPO_REF}"; then
+    video_log "Specific filtered fetch failed; falling back to full fetch."
+    git -C "${LONGLIVE2_SRC_DIR}" fetch --all --tags --prune
+  fi
+  git -C "${LONGLIVE2_SRC_DIR}" checkout "${LONGLIVE2_REPO_REF}" || git -C "${LONGLIVE2_SRC_DIR}" checkout FETCH_HEAD
+fi
 
 init_git_submodules() {
   local repo_dir="$1"
@@ -141,9 +170,12 @@ init_git_submodules() {
         rmdir "${target}"
       fi
       video_log "Cloning ${url} into ${target}."
-      if ! git clone --depth 1 "${url}" "${target}"; then
-        video_log "Shallow clone failed for ${url}; retrying full clone."
-        git clone "${url}" "${target}"
+      if ! git clone --filter=blob:none --depth 1 "${url}" "${target}"; then
+        video_log "Filtered shallow clone failed for ${url}; retrying shallow clone."
+        if ! git clone --depth 1 "${url}" "${target}"; then
+          video_log "Shallow clone failed for ${url}; retrying full clone."
+          git clone "${url}" "${target}"
+        fi
       fi
     done < <(git config -f "${repo_dir}/.gitmodules" --get-regexp '^submodule\..*\.path$')
     return
@@ -168,6 +200,9 @@ LONGLIVE2_SRC_DIR=${LONGLIVE2_SRC_DIR}
 LONGLIVE2_PROFILE=${LONGLIVE2_PROFILE}
 LONGLIVE2_VENV_DIR=${LONGLIVE2_VENV_DIR}
 LONGLIVE2_CUDA_ARCHS=${LONGLIVE2_CUDA_ARCHS}
+LONGLIVE2_FLASH_ATTN_CUDA_ARCHS=${LONGLIVE2_FLASH_ATTN_CUDA_ARCHS}
+LONGLIVE2_MAX_JOBS=${LONGLIVE2_MAX_JOBS}
+LONGLIVE2_NVCC_THREADS=${LONGLIVE2_NVCC_THREADS}
 LONGLIVE2_TRANSFORMERS_VERSION=${LONGLIVE2_TRANSFORMERS_VERSION}
 LONGLIVE2_EXTRA_PIP_PACKAGES=${LONGLIVE2_EXTRA_PIP_PACKAGES}
 EOF
@@ -198,6 +233,9 @@ detect_blackwell_cuda_archs() {
 
 if [[ "${LONGLIVE2_PROFILE}" == nvfp4* ]]; then
   detect_blackwell_cuda_archs
+  if [[ -n "${LONGLIVE2_CUDA_ARCHS}" && -z "${LONGLIVE2_FLASH_ATTN_CUDA_ARCHS}" ]]; then
+    LONGLIVE2_FLASH_ATTN_CUDA_ARCHS="${LONGLIVE2_CUDA_ARCHS//,/;}"
+  fi
   if [[ -n "${LONGLIVE2_CUDA_ARCHS}" ]]; then
     video_log "Using CUDA_ARCHS=${LONGLIVE2_CUDA_ARCHS} for LongLive2 NVFP4 extension builds."
   else
@@ -255,13 +293,24 @@ else
     LONGLIVE2_BUILD_FLASH_ATTN_FROM_SOURCE="1"
   fi
   video_log "Installing NVFP4 LongLive2 dependencies."
+  video_log "Preinstalling Torch ${LONGLIVE2_NVFP4_TORCH_VERSION} before upstream requirements to avoid duplicate CUDA stack downloads."
+  "${PY}" -m pip install --index-url https://download.pytorch.org/whl/cu128 "torch==${LONGLIVE2_NVFP4_TORCH_VERSION}" "torchvision==${LONGLIVE2_NVFP4_TORCHVISION_VERSION}"
   "${PY}" -m pip install -r "${LONGLIVE2_SRC_DIR}/requirements.txt"
-  "${PY}" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 torch==2.10.0 torchvision==0.25.0
+  "${PY}" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 "torch==${LONGLIVE2_NVFP4_TORCH_VERSION}" "torchvision==${LONGLIVE2_NVFP4_TORCHVISION_VERSION}"
   pin_longlive2_python_deps
   install_longlive2_extra_python_deps
   verify_longlive2_python_deps
   if [[ -n "${LONGLIVE2_MAX_JOBS}" ]]; then
     export MAX_JOBS="${LONGLIVE2_MAX_JOBS}"
+    video_log "Using MAX_JOBS=${MAX_JOBS} for native extension builds."
+  fi
+  if [[ -n "${LONGLIVE2_NVCC_THREADS}" ]]; then
+    export NVCC_THREADS="${LONGLIVE2_NVCC_THREADS}"
+    video_log "Using NVCC_THREADS=${NVCC_THREADS} for native extension builds."
+  fi
+  if [[ -n "${LONGLIVE2_FLASH_ATTN_CUDA_ARCHS}" ]]; then
+    export FLASH_ATTN_CUDA_ARCHS="${LONGLIVE2_FLASH_ATTN_CUDA_ARCHS}"
+    video_log "Using FLASH_ATTN_CUDA_ARCHS=${FLASH_ATTN_CUDA_ARCHS} for flash-attention source builds."
   fi
   if [[ -n "${LONGLIVE2_CUDA_ARCHS}" ]]; then
     export CUDA_ARCHS="${LONGLIVE2_CUDA_ARCHS}"

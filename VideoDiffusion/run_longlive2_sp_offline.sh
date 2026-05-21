@@ -91,6 +91,7 @@ while [[ $# -gt 0 ]]; do
       LONGLIVE2_CONFIG_PATH="$2/longlive2_inference.yaml"
       LONGLIVE2_PROMPT_PATH="$2/prompt.txt"
       LONGLIVE2_OUTPUT_DIR="$2/videos"
+      LONGLIVE2_RUN_TIMING_JSON="$2/run_timing.json"
       shift 2
       ;;
     --config)
@@ -209,11 +210,12 @@ LONGLIVE2_CACHE_DIR="$(abs_path "${LONGLIVE2_CACHE_DIR}")"
 LONGLIVE2_CONFIG_PATH="$(abs_path "${LONGLIVE2_CONFIG_PATH}")"
 LONGLIVE2_PROMPT_PATH="$(abs_path "${LONGLIVE2_PROMPT_PATH}")"
 LONGLIVE2_OUTPUT_DIR="$(abs_path "${LONGLIVE2_OUTPUT_DIR}")"
+LONGLIVE2_RUN_TIMING_JSON="$(abs_path "${LONGLIVE2_RUN_TIMING_JSON}")"
 if [[ -n "${LONGLIVE2_SCHEDULE_CSV}" ]]; then
   LONGLIVE2_SCHEDULE_CSV="$(abs_path "${LONGLIVE2_SCHEDULE_CSV}")"
 fi
 
-mkdir -p "${LONGLIVE2_RUN_DIR}" "${LONGLIVE2_OUTPUT_DIR}"
+mkdir -p "${LONGLIVE2_RUN_DIR}" "${LONGLIVE2_OUTPUT_DIR}" "$(dirname -- "${LONGLIVE2_RUN_TIMING_JSON}")"
 RUN_LOG="${LONGLIVE2_RUN_DIR}/torchrun.log"
 GPU_TELEMETRY="${LONGLIVE2_RUN_DIR}/gpu_telemetry.csv"
 PLAN_JSON="${LONGLIVE2_RUN_DIR}/launch_plan.json"

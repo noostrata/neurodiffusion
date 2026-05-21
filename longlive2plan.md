@@ -105,8 +105,9 @@ Last no-spend check: 2026-05-21.
 
 ```text
 active Vast instances: []
-Vast credit after benchmark-only run: $17.385469
+Vast credit after latest no-spend check: $8.061483
 latest viable LongLive2 Hopper offer used: H100 NVL x2 offer `29153227` at `$5.873611111111112/hour`
+latest viable LongLive2 Blackwell offer used: RTX 5090 x1 offer `37236595` at `$1.2027777777777777/hour` advertised GPU rate
 ```
 
 Approximate H100 NVL x2 compute cost at the latest selected rate:
@@ -126,8 +127,9 @@ Budget conclusion:
 2. The latest successful paid benchmark selected H100 NVL x2 offer `29153227` at `$5.873611111111112/h`.
 3. The restore validation observed about `$1.713137` spend over `1050s`, including a slow `254s` repo upload that is now optimized.
 4. The benchmark-only comparison measured `speedup_sp2_over_sp1=0.663945`, which is below the `<1.3x` stop threshold.
-5. Blackwell NVFP4 follow-up is now scoped to RTX 5090 x1 first; do not rent more than one B200/GB200.
-6. Latest no-spend offer scan found no strict datacenter one-GPU Blackwell offers, one unusable `B200 x8` relaxed offer at about `$71.80/h`, and an RTX 5090 x1 preflight selection at `$0.9351851851851851/h`.
+5. Blackwell NVFP4 follow-up has now rendered on RTX 5090 x1 and published the SM120 tuple, but it missed the realtime gate by a wide margin.
+6. The RTX 5090 manual-recovery/publish run spent about `$5.002834` from the pre-run credit snapshot; this includes cold build/download/render/publish time and storage/operation noise.
+7. Latest no-spend offer scan found no strict datacenter one-GPU Blackwell offers, one unusable `B200 x8` relaxed offer at about `$71.80/h`, and relaxed RTX 5090 x1 offers in the low-dollar-per-hour range.
 
 ## Current Readiness
 
@@ -158,15 +160,22 @@ Ready locally:
 23. The paid wrapper excludes local `.venv` and `artifacts/` from repo rsync after the restore run showed `repo_sync` taking `254s`; the benchmark run reduced `repo_sync` to `10s`.
 24. Local artifact retention is now telemetry-first while preserving intentional LongLive2 proof clips/contact sheets; `python3 scripts/prune_artifacts.py` reports zero prune candidates.
 25. `scripts/prune_artifacts.py --delete` records SHA-256/size manifests before deleting disposable MP4/PNG/JPG files.
+26. The RTX 5090 / SM120 NVFP4 cold path now builds FourOverSix, FlashAttention `2.8.3`, and the FP4 KV dequant extension with explicit SM120 arch settings and constrained build parallelism.
+27. `VideoDiffusion/run_longlive2_sp_offline.sh --run-dir` now writes `run_timing.json` inside the selected run directory, fixing the post-render report failure observed in the first RTX 5090 run.
+28. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` now launches long remote phases as detached logged steps with a short SSH launch timeout, status polling, and log tails, so a transient stuck SSH launch does not hide remote progress.
+29. `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` has been published to R2 after a valid nonblank RTX 5090 render.
 
 Not ready / not yet proven:
 
 1. The measured H100 NVL x2 BF16 SP speedup is not useful for live work: `0.663945x`, slower than one rank.
 2. No persistent live LongLive2 EEG runner should be built for this Hopper BF16 SP path.
 3. No LongLive2 WebRTC/live-display path exists yet.
+4. The SM120 NVFP4 tuple is only a `published_tuple`; it is not a `validated_restore_tuple` until a fresh restore-only RTX 5090 run renders without HF download fallback.
+5. The latest RTX 5090 NVFP4 render is not realtime: `wall_video_fps=1.151356` and `wall_render_fps=0.294747` at the `480x832` request shape.
 
-This means the first three paid milestones are complete: cold BF16 SP render/publication, fresh R2 restore validation, and same-seed `sp1`/`sp2` benchmark.
-The benchmark result fails the live-runner threshold, so keep LongLive2 BF16 SP as an offline/research path and keep Scope/LongLive as the realtime EEG path.
+This means the first three Hopper paid milestones are complete: cold BF16 SP render/publication, fresh R2 restore validation, and same-seed `sp1`/`sp2` benchmark.
+The Blackwell cold-build milestone is also complete as a valid render plus R2 publish, but it fails the live-runner threshold at the current resolution.
+Keep LongLive2 as an offline/research path until a future Blackwell restore/lower-resolution run proves `>=24` wall-clock FPS; keep Scope/LongLive as the realtime EEG path.
 
 ## Detailed Plan From Current State
 
@@ -271,13 +280,14 @@ Purpose: avoid repeating the Hopper/NVFP4 mismatch warned about in the paper.
 
 Do not test NVFP4 on H100/H200 as a performance lane.
 
-Current Blackwell target:
+Latest Blackwell result:
 
-1. use `RTX 5090 x1` / `sm120`;
-2. use `nvfp4_s2`, `sp_size=1`, `dp_size=1`, `sampling_steps=2`;
-3. use `--blackwell-tier sm120 --blackwell-cold-build` for the first paid run;
-4. keep the B200/GB200 SM100 path available only for a one-GPU offer;
-5. do not rent B200/GB200 x8 for this experiment.
+1. `RTX 5090 x1` / `sm120` built and rendered with `nvfp4_s2`, `sp_size=1`, `dp_size=1`, and `sampling_steps=2`.
+2. the successful manual-recovery run rendered a local nonblank `832x480` MP4 with `125` frames at MP4 playback `24 fps`;
+3. generation speed was not realtime: `wall_video_fps=1.151356` and `wall_render_fps=0.294747`;
+4. the SM120 tuple was published to R2 as `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1`;
+5. keep the B200/GB200 SM100 path available only for a one-GPU offer;
+6. do not rent B200/GB200 x8 for this experiment.
 
 Decision rule:
 
@@ -325,6 +335,8 @@ and account identifiers out of this file.
 | 2026-05-21 | wrapper preflight | pass | H100 NVL x2 offer `29153227` at `$5.873611111111112/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | planned `$4.405208` for `45 min`; required `$5.000000` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T114238Z/` | benchmark-only preflight passed local checks, active-instance gate, offline dry run, benchmark dry run, NVFP4 guard, offer selection, and credit gate; no paid instance created |
 | 2026-05-21 | paid BF16 SP benchmark | pass, but stop live path | H100 NVL x2 offer `29153227` at `$5.873611111111112/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$1.437403` over `881s`; planned `$4.405208` for `45 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T114258Z/` | benchmark-only run restored in `473s`, `repo_sync` was `10s`, benchmark phase was `214s`; `sp1` wall `84.131520s` / `0.380357 fps`; `sp2` wall `126.714834s` / `0.252536 fps`; `speedup_sp2_over_sp1=0.663945`, below stop threshold; both outputs were `832x480`, `125` frames, `24 fps`, nonblank; teardown succeeded; active instances verified `[]`; current credit about `$17.385469` |
 | 2026-05-21 | wrapper preflight | pass | RTX 5090 x1 offer `35949631` at `$0.9351851851851851/h` | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` | planned `$1.402778` for `90 min`; required `$4.000000` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T123648Z/` | `--blackwell-tier sm120 --blackwell-cold-build` preflight passed local checks, active-instance gate, NVFP4 config dry-run, NVFP4-on-SM90 guard, one-GPU offer selection, and credit gate; config uses `nvfp4_s2`, `sp_size=1`, `dp_size=1`, `sampling_steps=2`, `kv_quant=true`; no paid instance created; credit `$17.385469`, active instances `[]` |
+| 2026-05-21 | paid NVFP4 SM120 cold build | partial pass, wrapper failed after render | RTX 5090 x1 offer `37237908` instance selection at about `$2.0023/h` | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` | observed about `$1.276710` from the pre-run credit snapshot | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T153854Z/` | FourOverSix, FlashAttention `2.8.3`, FP4 KV dequant, and model download succeeded; render wrote a nonblank `832x480`, `125` frame, `24 fps` MP4, but the wrapper failed after inference because `--run-dir` did not move `run_timing.json`; local pullback and teardown succeeded; active instances verified `[]`; patched `run_longlive2_sp_offline.sh` afterward |
+| 2026-05-21 | paid NVFP4 SM120 manual recovery + R2 publish | valid render, not realtime | RTX 5090 x1 offer `37236595` at `$1.2027777777777777/h` advertised GPU rate | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` | observed about `$5.002834` from `$13.109821` to `$8.106987` credit | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T161410Z/` | cold build succeeded but the local wrapper hit a stuck SSH launch after build; manual remote download/render/publish recovered the built host; download took about `5.5 min`, render wall time was `108.567620s`, output was nonblank `832x480`, `125` frames, MP4 playback `24 fps`; `wall_video_fps=1.151356`, `wall_render_fps=0.294747`, `wall_fps_ok=false`; R2 publish succeeded with env archive `3.65 GiB` and weights tar `47,149,096,960` bytes; local pullback and teardown succeeded; active instances verified `[]`; credit after teardown `$8.106987` |
 
 ## What Changed
 
@@ -346,6 +358,8 @@ Use this section for short operator notes that explain why the plan changed.
 - 2026-05-21: The next H100 NVL x2 restore validation succeeded end-to-end with the R2 tuple, proving the Wan-link restore hook and promoting the BF16 SP SM90 tuple to `validated_restore_tuple`. The run also showed repo upload was wasting `254s`, so the wrapper now excludes local `.venv` and `artifacts/` from rsync and supports `--benchmark-only` for the next paid `sp1`/`sp2` speed test.
 - 2026-05-21: The benchmark-only H100 NVL x2 run proved the optimized repo upload (`10s`) and measured `sp2` slower than `sp1` (`0.663945x`). Per the decision rule, do not build the persistent Hopper BF16 SP live runner; keep LongLive2 for offline/research and keep Scope/LongLive as the realtime EEG path.
 - 2026-05-21: Re-scoped the next Blackwell test to `RTX 5090 x1` / SM120 instead of B200/GB200. Added one-GPU Blackwell wrapper defaults, CUDA arch plumbing, wall-clock render FPS reporting, and docs. No-spend preflight selected RTX 5090 offer `35949631` at `$0.9351851851851851/h` with planned `$1.402778` for a `90 min` cap. Follow-up code review tightened the path so Blackwell runs set `--min-wall-fps 24`, use strict remote NVFP4 GPU matching, fail corrupted/non-sampled output QA, and separate R2 publish eligibility from realtime acceptance.
+- 2026-05-21: First paid RTX 5090 SM120 cold build rendered a valid nonblank MP4 but failed after inference because `--run-dir` did not update `run_timing.json`. Patched `run_longlive2_sp_offline.sh` so timing telemetry follows the selected run directory.
+- 2026-05-21: Second RTX 5090 SM120 run recovered manually after a stuck local SSH launch, rendered a valid nonblank MP4, published `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` to R2, pulled artifacts locally, and tore down cleanly. The run was not realtime (`wall_video_fps=1.151356`, `wall_render_fps=0.294747`), so the tuple is `published_tuple` only until a fresh restore-only validation passes.
 
 ## Step-By-Step Checklist
 
@@ -1010,7 +1024,9 @@ bash VideoDiffusion/publish_r2_prebuild_model.sh \
 
 ## RTX 5090 Blackwell NVFP4 Lane
 
-This is the next paid LongLive2 target after no-spend preflight. It is explicitly one GPU.
+The first paid RTX 5090 LongLive2 target is complete as a cold build, valid render, R2 publish, local pullback, and teardown.
+It is explicitly one GPU.
+It did not prove realtime at `480x832`.
 
 ```bash
 bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
@@ -1025,8 +1041,20 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --max-estimated-spend-usd 3.00
 ```
 
-If this fails for memory or speed after a clean build, rerun at `320x576` before abandoning RTX 5090.
-If it succeeds and publishes R2, run a separate restore-only validation before marking the SM120 tuple reusable.
+Latest result:
+
+1. valid nonblank MP4: `832x480`, `125` frames, playback `24 fps`;
+2. generation speed: `wall_video_fps=1.151356`, `wall_render_fps=0.294747`;
+3. R2 tuple: `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1`;
+4. tuple state: `published_tuple`, not `validated_restore_tuple`;
+5. active instances after teardown: `[]`.
+
+Next paid RTX 5090 step:
+
+1. do not cold-build again by default;
+2. restore the SM120 tuple on a fresh RTX 5090 with no HF download fallback;
+3. if restore is fast and the render works, test `320x576` before abandoning RTX 5090 as a realtime candidate;
+4. if restore is slow or `320x576` is still far below `24` wall FPS, stop LongLive2 RTX 5090 as a live path and keep Scope/LongLive as the realtime route.
 
 ## Live EEG Runner Comes Later
 
@@ -1055,13 +1083,13 @@ Before saying "go", confirm:
 2. `bash scripts/check.sh` passes.
 3. `bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` passes.
 4. `vastai show instances --raw` returns `[]`.
-5. Vast credit is enough for the intended phase; as of the benchmark handoff this should mean any future Blackwell/NVFP4 or cold rebuild is explicitly approved, not an automatic Hopper BF16 rerun.
-6. the planned Blackwell run selects `RTX 5090 x1`, not B200/GB200 x8 and not a two-GPU offer.
+5. Vast credit is enough for the intended phase; after the latest no-spend check the last checked credit was `$8.061483`.
+6. any planned Blackwell run selects `RTX 5090 x1`, not B200/GB200 x8 and not a two-GPU offer.
 7. the run uses `nvfp4_s2`, `sp_size=1`, `dp_size=1`, `sampling_steps=2`, and `CUDA_ARCHS=120`.
-8. first SM120 build uses `--blackwell-cold-build`; future restore checks remove that flag and use no HF download fallback.
+8. first SM120 build used `--blackwell-cold-build`; future restore checks remove that flag and use no HF download fallback.
 9. success is judged by `run_timing.json` / `run_report.json` wall-clock render FPS, not MP4 playback FPS; Blackwell tier mode sets `--min-wall-fps 24`, so `run_report.json` fails acceptance below realtime.
 10. R2 publish is allowed after a valid nonblank render even if `wall_fps_ok` is false; in that case the wrapper publishes the useful cache and then exits failed for the realtime verdict.
-10. the wrapper max-alive/budget guards are enabled and the operator watches for obvious stuck setup.
-11. artifact retention is telemetry-first: prune disposable media after QA and keep only reports/logs/manifests plus intentional proof clips.
+11. the wrapper max-alive/budget guards are enabled and the operator watches for obvious stuck setup.
+12. artifact retention is telemetry-first: prune disposable media after QA and keep only reports/logs/manifests plus intentional proof clips.
 
 The benchmark-only speedup run is complete; these conditions now apply to any future paid follow-up.

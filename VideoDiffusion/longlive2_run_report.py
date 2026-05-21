@@ -103,6 +103,15 @@ def _float_or_none(value: Any) -> float | None:
         return None
 
 
+def _int_or_none(value: Any) -> int | None:
+    try:
+        if value in (None, ""):
+            return None
+        return int(float(value))
+    except Exception:
+        return None
+
+
 def run_json_command(cmd: list[str]) -> dict[str, Any]:
     try:
         out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
@@ -337,6 +346,18 @@ def write_report(args: argparse.Namespace) -> int:
 
     launch_plan = load_json(run_dir / "launch_plan.json")
     run_timing = load_json(run_dir / "run_timing.json")
+    wall_elapsed_s = _float_or_none(run_timing.get("wall_elapsed_s"))
+    streams = artifact_qa.get("ffprobe", {}).get("streams") or []
+    first_stream = streams[0] if streams and isinstance(streams[0], dict) else {}
+    video_frames = _int_or_none(first_stream.get("nb_read_frames"))
+    if wall_elapsed_s and wall_elapsed_s > 0 and video_frames:
+        run_timing["video_frames"] = video_frames
+        run_timing["wall_video_fps"] = round(video_frames / wall_elapsed_s, 6)
+    effective_wall_fps = (
+        _float_or_none(run_timing.get("wall_video_fps"))
+        or _float_or_none(run_timing.get("wall_render_fps"))
+        or 0.0
+    )
     gpu_telemetry = parse_gpu_telemetry(run_dir / "gpu_telemetry.csv")
     acceptance = {
         "require_video": not args.allow_missing_video,
@@ -345,8 +366,7 @@ def write_report(args: argparse.Namespace) -> int:
         "sp_marker_present": bool(log.get("sp_markers")) or int(launch_plan.get("nproc_per_node") or 1) <= 1,
         "telemetry_present": bool(gpu_telemetry.get("samples")) or args.allow_missing_telemetry,
         "artifact_nonblank_ok": bool(artifact_qa.get("nonblank_ok")) or args.allow_missing_video,
-        "wall_fps_ok": args.min_wall_fps <= 0
-        or (_float_or_none(run_timing.get("wall_render_fps")) or 0.0) >= args.min_wall_fps,
+        "wall_fps_ok": args.min_wall_fps <= 0 or effective_wall_fps >= args.min_wall_fps,
     }
     acceptance["passed"] = all(
         acceptance[key]

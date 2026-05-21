@@ -128,15 +128,16 @@ Planned tuple families:
 | --- | --- | --- | --- |
 | BF16 SP | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | `H100/H200 x2` | prove one-stream two-rank inference |
 | NVFP4 S2 SM100 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1` | `B200/GB200 x1 only` | maximum speed path if a sane one-GPU offer appears |
-| NVFP4 S2 SM120 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` | `RTX 5090 x1` | current Blackwell test target |
+| NVFP4 S2 SM120 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` | `RTX 5090 x1` | published after valid render; not realtime and not restore-validated |
 
 Current LongLive2 acceleration order:
 
 1. Use the existing BF16 SP R2 tuple as the validated Hopper restore path.
 2. Stop treating Hopper BF16 SP as a live path because same-seed `sp_size=2` was slower than `sp_size=1`.
-3. Test the one-GPU RTX 5090 / SM120 `nvfp4_s2` lane before any B200/GB200 spend above one GPU.
+3. Treat the RTX 5090 / SM120 `nvfp4_s2` cold-build lane as mechanically proven but not realtime at `480x832`.
 4. Keep Scope/LongLive as the realtime EEG path until a Blackwell LongLive2 run proves `>=24` wall-clock render FPS; the Blackwell wrapper sets the same `24 fps` threshold in `run_report.json` acceptance.
 5. For first Blackwell cold builds, cache eligibility and realtime acceptance are separate: a valid nonblank render can publish the R2 tuple even if the wrapper later exits failed because `wall_fps_ok` is false.
+6. The next Blackwell acceleration step is restore-only validation of the published SM120 tuple, not another cold rebuild.
 
 Latest H200 x2 BF16 SP result:
 
@@ -168,6 +169,17 @@ Latest SP benchmark result:
 6. Both outputs were nonblank `832x480`, `125` frames, `24 fps`, `5.208s`.
 7. Total wrapper elapsed `881s`; estimated spend about `$1.437403`; teardown returned `[]`.
 
+Latest RTX 5090 SM120 NVFP4 result:
+
+1. First cold run: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T153854Z/`; valid MP4 landed, but the wrapper failed after render because `--run-dir` did not move `run_timing.json`.
+2. Second manual-recovery run: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T161410Z/`; RTX 5090 x1, offer `37236595`, advertised GPU rate `$1.2027777777777777/h`.
+3. Build path succeeded with FourOverSix, FlashAttention `2.8.3` built for SM120, and the FP4 KV dequant extension.
+4. Output: `832x480`, `125` frames, MP4 playback `24 fps`, `5.208s`, nonblank QA.
+5. Generation timing: `wall_elapsed_s=108.567620`, `wall_video_fps=1.151356`, `wall_render_fps=0.294747`; report acceptance failed because `wall_fps_ok=false`.
+6. Published R2 tuple: `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1`; env archive compressed from `8.32 GiB` to `3.65 GiB`; weights tar was `47,149,096,960` bytes.
+7. Tuple status: `published_tuple`, not `validated_restore_tuple`.
+8. Latest no-spend credit check after teardown was `$8.061483`; active instances were `[]`.
+
 Implemented local plumbing:
 
 1. `VideoDiffusion/setup_longlive2.sh` clones/pins LongLive2, pins `transformers==4.57.3` by default, installs `decord`, verifies LongLive2's import contracts, and builds BF16 or NVFP4 environments.
@@ -191,8 +203,9 @@ Validation order from here:
 
 1. no-cost config/report selftests;
 2. keep Scope/LongLive as the realtime path;
-3. run `--blackwell-tier sm120 --blackwell-cold-build --preflight` before any paid RTX 5090 launch;
-4. live LongLive2 runner only after a future distributed lane shows useful speedup.
+3. run a fresh restore-only SM120 validation before treating the RTX 5090 tuple as reusable;
+4. if restore is fast and cheap enough, test a lower-resolution SM120 run before abandoning RTX 5090 for realtime;
+5. live LongLive2 runner only after a future distributed or Blackwell lane shows useful realtime speed.
 
 See `docs/video-longlive2-sp-streaming.md` for the full plan.
 

@@ -266,10 +266,10 @@ Budget implication:
 1. The H100 NVL x2 benchmark fit inside the `45 min` cap at about `$1.437`.
 2. Current credit after the benchmark was about `$17.385469`; active instances were `[]`.
 3. Do not spend more on Hopper BF16 SP live-runner work unless deliberately rerunning for research; the measured speedup fails the live threshold.
-4. Blackwell NVFP4 work should not start without explicit budget approval; it has a different tuple family and build path.
+4. Blackwell NVFP4 cold-build work later ran with explicit approval and proved render/publish but not realtime.
 5. Local storage is no longer a budget concern for historical media: `artifacts/` is about `5.5M`, with telemetry retained and intentional proof MP4/contact sheets kept.
 
-Blackwell no-spend scan for the next LongLive2 target:
+Blackwell no-spend scan before the RTX 5090 target:
 
 | Scan | Result |
 | --- | --- |
@@ -277,25 +277,26 @@ Blackwell no-spend scan for the next LongLive2 target:
 | relaxed `B200/GB200` | only `B200 x8` at about `$71.80/h`; do not use for this one-GPU test |
 | relaxed `RTX 5090 x1` | multiple offers; preflight selected offer `35949631` at `$0.9351851851851851/h` |
 
-Budget implication:
+Budget implication after the scan:
 
-1. The next paid LongLive2 Blackwell test should target `RTX 5090 x1` / SM120 first.
-2. Use `--max-estimated-spend-usd 3.00` and a `90 min` cap for the cold build/download/render/publish path; the latest preflight planned `$1.402778`.
+1. The paid LongLive2 Blackwell test correctly targeted `RTX 5090 x1` / SM120 first.
+2. The preflight planned `$1.402778`, but actual cold build plus publish was more expensive because source builds and R2 upload dominated.
 3. Use a one-GPU B200/GB200 only if a sane one-GPU offer appears; do not rent B200/GB200 x8 for this experiment.
-4. Judge success with wall-clock render FPS from `run_timing.json`, not MP4 playback FPS; the Blackwell wrapper now sets `--min-wall-fps 24` so slow renders fail `run_report.json` acceptance.
-5. A valid but slow first cold build may still publish the R2 tuple before failing the realtime verdict, avoiding a second paid build/download cycle just to test lower resolutions.
+4. Judge success with wall-clock render FPS from `run_timing.json`, not MP4 playback FPS; the Blackwell wrapper sets `--min-wall-fps 24` so slow renders fail `run_report.json` acceptance.
+5. The first valid slow cold build published the R2 tuple, avoiding another paid cold build just to test restore or lower resolutions.
 
-Latest no-spend readiness check:
+Latest paid-readiness state after RTX 5090 teardown:
 
 | Field | Value |
 | --- | ---: |
-| Vast credit | `$17.385469` |
+| Vast credit | `$8.061483` |
 | Active instances | `0` |
 | Latest successful benchmark offer | `H100 NVL x2` offer `29153227` |
 | Advertised rate | `$5.873611111111112/h` |
 | Benchmark spend | about `$1.437403` |
 | Benchmark result | `sp2` slower than `sp1`, `0.663945x` |
-| Result | stop Hopper BF16 SP as a live path; keep Scope/LongLive as realtime route |
+| Latest Blackwell result | RTX 5090 valid render plus R2 publish, not realtime |
+| Result | stop Hopper BF16 SP as a live path; keep Scope/LongLive as realtime route; restore-validate SM120 before any lower-res LongLive2 speed test |
 
 | Instance | GPU | Resolution | Invoice cost | Notes |
 | ---: | --- | --- | ---: | --- |
@@ -370,9 +371,25 @@ LongLive2 Blackwell RTX 5090 budgeting:
 
 1. command shape: `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --blackwell-tier sm120 --blackwell-cold-build`;
 2. selected offers must be `RTX 5090 x1`, not two-GPU listings;
-3. default planned cap: `90 min`;
-4. default spend ceiling: `$3.00`, which fits the current `$17.385469` credit snapshot;
-5. if cold build succeeds and publishes R2, run a separate short restore validation before treating the tuple as reusable.
+3. default cold-build planned cap was `90 min`;
+4. first cold-build expectation was too optimistic because Blackwell source builds plus publish dominated wall-clock time;
+5. if cold build succeeds and publishes R2, run a separate short restore validation before treating the tuple as reusable;
+6. do not cold-build the SM120 tuple again by default, because the tuple is now published.
+
+RTX 5090 paid evidence:
+
+| Run | Advertised rate / credit window | Result | Cost note |
+| --- | ---: | --- | ---: |
+| `20260521T153854Z` | about `$2.0023/h` | valid MP4 landed, wrapper failed after render on misplaced `run_timing.json` | about `$1.276710` from pre-run credit snapshot |
+| `20260521T161410Z` | `$1.2027777777777777/h` advertised GPU rate | manual recovery rendered, published R2, pulled local artifacts, tore down | about `$5.002834` from `$13.109821` to `$8.106987` |
+
+RTX 5090 interpretation:
+
+1. cheaper listed hourly rate did not make the cold path cheap because build, download, R2 publish, and manual recovery dominated elapsed time;
+2. the useful asset from the second run is the SM120 tuple, not a realtime result;
+3. output was nonblank `832x480`, `125` frames, MP4 playback `24 fps`, but generation speed was only `wall_video_fps=1.151356`;
+4. next paid SM120 work should be restore-only and tightly capped; only run lower-resolution speed checks after restore proves the tuple actually saves startup time;
+5. latest no-spend credit check was `$8.061483`, active instances `[]`.
 
 Two-GPU decision metric:
 

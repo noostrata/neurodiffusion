@@ -7,8 +7,9 @@ The objective is one live video stream whose generation state is split across tw
 
 ## Status
 
-Current status: local plumbing implemented, no-cost validated, and cold H200 x2 BF16 SP render validated.
-The BF16 SP tuple is published to R2, but the fresh restore path still needs one paid rerun after the Wan-link restore patch.
+Current status: local plumbing implemented, no-cost validated, Hopper BF16 SP restore-validated, and RTX 5090 SM120 NVFP4 cold-render validated as a nonblank offline render.
+The BF16 SP tuple is a `validated_restore_tuple`; the SM120 NVFP4 tuple is published to R2 but still needs a fresh restore-only render before it can be treated as reusable.
+The RTX 5090 result did not meet realtime speed at the current `480x832` request shape.
 
 LongLive2 is a separate experimental lane from Daydream Scope + LongLive:
 
@@ -190,6 +191,9 @@ Implemented files:
    - supports `--skip-build` for cheap clone/config steps;
    - supports BF16 and NVFP4 profile setup, including FourOverSix and pinned flash-attention source build for NVFP4;
    - auto-detects `CUDA_ARCHS=120` for RTX 5090 and `CUDA_ARCHS=100` for B200/GB200 when building NVFP4 extensions;
+   - supports explicit `--flash-attn-cuda-archs`, `--max-jobs`, and `--nvcc-threads` build controls for expensive Blackwell source builds;
+   - uses filtered LongLive2 clone/fetch paths when possible before falling back to full git transfer;
+   - preinstalls the intended NVFP4 Torch/CUDA wheel before upstream requirements to avoid duplicate CUDA-stack downloads;
    - pins `transformers==4.57.3` by default and verifies the `x_clip_loss` import that upstream LongLive2 expects;
    - installs `decord` as an extra dependency until upstream requirements include it.
 2. `VideoDiffusion/download_longlive2_models.sh`
@@ -209,6 +213,7 @@ Implemented files:
    - supports `sp_size * dp_size` process count;
    - writes config, launch plan, torchrun log, GPU telemetry, report JSON, artifact QA, and contact sheet;
    - writes `run_timing.json` with wall-clock render FPS so realtime claims use generation speed rather than MP4 playback FPS;
+   - keeps `run_timing.json` inside the selected `--run-dir`, matching config, prompt, logs, and output videos;
    - accepts `--min-wall-fps` and uses it in `run_report.json` acceptance;
    - can exit successfully after inference while preserving a failed report through `--no-fail-on-report-reject`, used only when the Vast wrapper must publish useful cold-build caches before failing the realtime verdict;
    - accepts `--seed` so `sp1` and `sp2` comparisons can hold the seed fixed.
@@ -222,6 +227,7 @@ Implemented files:
    - writes sanitized selected-offer, credit, budget, phase-marker, and phase-report artifacts;
    - enforces `--max-alive-min` around paid remote SSH phases;
    - retries idempotent SSH transfer phases with `--transfer-retries` and `--transfer-retry-sleep-s`;
+   - launches long remote phases as detached logged steps with a bounded SSH launch timeout, status polling, and log tails;
    - attempts best-effort artifact pullback before teardown even when setup/download/render fails;
    - restores R2 tuple when available;
    - build/download fallback only when explicitly allowed;
@@ -239,6 +245,7 @@ Implemented files:
    - reads `ffprobe` metadata when output exists;
    - generates contact sheet and nonblank artifact QA when possible;
    - includes `run_timing.json` in `run_report.json`;
+   - records `wall_video_fps` when `ffprobe` frame count and wall timing are both available;
    - treats artifact-QA sampling errors as failed nonblank validation when video output is required;
    - parses wrapper phase markers into phase/cost reports.
 8. R2 dispatch updates:
@@ -326,17 +333,26 @@ Current paid evidence:
 23. Benchmark result: `sp1` wall `84.131520s` / `0.380357 fps`; `sp2` wall `126.714834s` / `0.252536 fps`; `speedup_sp2_over_sp1=0.663945`; acceptance hint `stop`.
 24. Both benchmark outputs were valid and nonblank at `832x480`, `125` frames, `24 fps`, `5.208s`; `sp1` used GPU 0 only, while `sp2` used both H100 NVLs at `100%` max utilization and about `35771 MiB` each.
 25. Benchmark phase telemetry: total elapsed `881s`, restore `473s`, benchmark `214s`, artifact pullback `73s`, teardown `6s`, estimated spend about `$1.437403`.
+26. First RTX 5090 / SM120 NVFP4 cold run `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T153854Z/` built FourOverSix, FlashAttention `2.8.3`, the FP4 KV dequant extension, and downloaded the NVFP4 S2 plus Wan assets.
+27. That first RTX 5090 run rendered a valid nonblank `832x480`, `125` frame, `24 fps` MP4, but the wrapper failed after inference because `--run-dir` did not move `run_timing.json`; the repo now fixes that timing-path bug.
+28. Second RTX 5090 / SM120 run `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T161410Z/` succeeded through manual recovery after a stuck local SSH launch, rendered, published R2, pulled local artifacts, and tore down cleanly.
+29. The successful RTX 5090 output is `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T161410Z/offline/videos/rank0-0-0_regular.mp4`, H.264 `832x480`, `125` frames, `24 fps`, `5.208s`, nonblank QA.
+30. RTX 5090 wall timing was not realtime: `wall_elapsed_s=108.567620`, `wall_video_fps=1.151356`, `wall_render_fps=0.294747`, and `wall_fps_ok=false`.
+31. The SM120 tuple `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` is now published to R2. The publish staged an env archive compressed from `8.32 GiB` to `3.65 GiB` and a weights tar of `47,149,096,960` bytes.
+32. Treat that SM120 tuple as `published_tuple`, not `validated_restore_tuple`, until a fresh RTX 5090 restore-only run renders without HF download fallback.
+33. Latest no-spend credit check after RTX 5090 publish/teardown was `$8.061483`; active instances were `[]`.
 
 Current state:
 
 1. active Vast instances: `0`;
-2. current Vast credit after the benchmark-only run: about `$17.385469`;
+2. current Vast credit after the latest no-spend check: about `$8.061483`;
 3. latest successful paid benchmark selected H100 NVL x2 offer `29153227` at `$5.873611111111112/h`; re-query before spending because Vast offers move;
 4. LongLive2 MP4 proof clips exist and the BF16 SP SM90 R2 tuple is now a `validated_restore_tuple`;
 5. the validated tuple is `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1`;
 6. `sp2` was slower than `sp1`: `speedup_sp2_over_sp1=0.663945`.
 7. local artifact retention is telemetry-first; historical Scope/LongLive media was pruned after QA and only intentional proof clips should remain.
 8. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --benchmark-only` is validated for bounded future reruns, but the Hopper BF16 result does not justify a live runner.
+9. SM120 NVFP4 proved build/render/publish viability on RTX 5090 x1, but it does not justify a live runner at `480x832`.
 
 ## Current Ordered Plan
 
@@ -346,9 +362,10 @@ The live checklist is `longlive2plan.md`. The short version is:
 2. Budget gate: current credit is enough for focused follow-up, but Hopper BF16 SP should not be rerun automatically because the speedup gate failed.
 3. Restore validation is complete for the BF16 SP SM90 tuple.
 4. SP benchmark is complete and failed the live threshold (`0.663945x`).
-5. Decision: stop LongLive2 Hopper BF16 SP as a live path for now; keep it research/offline only.
-6. Live fallback: keep Daydream Scope + LongLive as the realtime EEG path.
-7. Blackwell/NVFP4: only revisit if explicitly budgeted; do not chase NVFP4 speedups on H100/H200.
+5. RTX 5090 SM120 NVFP4 cold build/render/publish is complete, but failed realtime speed (`wall_video_fps=1.151356`).
+6. Decision: stop LongLive2 Hopper BF16 SP as a live path for now; keep it research/offline only.
+7. Live fallback: keep Daydream Scope + LongLive as the realtime EEG path.
+8. Blackwell/NVFP4: next paid step, if approved, is fresh restore-only validation of the SM120 tuple, then a lower-resolution speed check only if restore is fast enough to make the experiment cost-effective.
 
 ## Test Plan
 
@@ -439,6 +456,12 @@ Acceptance:
 6. wall-clock render FPS from `run_timing.json` is `>=24` before calling it realtime; MP4 playback FPS alone does not count. In Blackwell tier mode this is enforced in `run_report.json` through `wall_fps_ok`.
 7. a valid but slow Blackwell cold build may still publish the R2 tuple, but the wrapper exits failed after publishing so the cache exists without promoting the run as realtime.
 
+Latest outcome:
+
+1. RTX 5090 SM120 met import/build/render/publish criteria and produced a valid nonblank MP4.
+2. It failed the realtime criterion at `480x832`: `wall_video_fps=1.151356`.
+3. The published SM120 tuple must be restore-validated before it is used as a fast path.
+
 ## Live EEG Integration Plan
 
 Do not wire EEG directly into `inference_sp.py` first.
@@ -515,3 +538,5 @@ Current completion status:
 
 1. Items 1-6 are complete for the cold-publish plus fresh-restore path.
 2. The `sp1` vs `sp2` benchmark is complete and failed the speedup gate, so do not build the persistent Hopper BF16 SP live runner.
+3. The RTX 5090 SM120 cold-publish path is complete as a valid offline render plus R2 publish, but failed realtime speed.
+4. The SM120 tuple still needs a fresh restore-only validation before it becomes a reusable fast path.

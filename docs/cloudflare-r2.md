@@ -405,7 +405,7 @@ Tuple tag families:
 - `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1`
 - `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1`
 
-The next planned LongLive2 publish target is the SM120 RTX 5090 tuple. It should only be published after a successful `nvfp4_s2` render with local artifact pullback, and it should only become `validated_restore_tuple` after a separate fresh restore render. Publish eligibility is stricter than process success but separate from realtime speed: a valid nonblank render with telemetry can publish the cold-build tuple even if `wall_fps_ok` is false, so the expensive build is cached without claiming realtime performance.
+The SM120 RTX 5090 tuple is now published after a successful `nvfp4_s2` render with local artifact pullback. It is still only a `published_tuple`; it becomes `validated_restore_tuple` only after a separate fresh restore render. Publish eligibility is stricter than process success but separate from realtime speed: a valid nonblank render with telemetry can publish the cold-build tuple even if `wall_fps_ok` is false, so the expensive build is cached without claiming realtime performance.
 
 R2 keys:
 
@@ -442,6 +442,17 @@ Current LongLive2 BF16 SP tuple state:
 4. First fresh restore validation fetched/extracted the tuple in `559s` but failed because the restored cache did not recreate LongLive2's vendor-local Wan symlink.
 5. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates `VideoDiffusion/.vendors/LongLive2/wan_models/Wan2.2-TI2V-5B` after extracting the LongLive2 cache.
 6. Successful restore validation `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T111719Z/` restored the tuple in `502s`, recreated the Wan link, rendered one nonblank `832x480` MP4, pulled artifacts, and tore down cleanly.
+
+Current LongLive2 SM120 NVFP4 tuple state:
+
+1. `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` has been published to R2 after a valid RTX 5090 render.
+2. Source run: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T161410Z/`.
+3. The render output was nonblank `832x480`, `125` frames, MP4 playback `24 fps`, but not realtime generation: `wall_video_fps=1.151356`, `wall_render_fps=0.294747`.
+4. Published archive sizes observed during upload:
+   - env archive compressed from `8.32 GiB` to `3.65 GiB`;
+   - weights tar: `47,149,096,960` bytes.
+5. Tuple status is `published_tuple`, not `validated_restore_tuple`.
+6. Next R2 validation is a fresh RTX 5090 restore-only run with no HF download fallback.
 
 First publish rule:
 

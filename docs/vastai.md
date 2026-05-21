@@ -177,7 +177,7 @@ The wrapper:
 1. resolves SSH through `scripts/vast/resolve_ssh.sh`,
 2. waits for SSH auth readiness after Vast reports `running`,
 3. rejects runtime-tag/GPU mismatches before spending time on restore,
-4. syncs the repo without `.git`, `.venv`, `MAGI-1`, `.tmp`, or generated media,
+4. syncs the repo without `.git`, `.venv`, `artifacts/`, `MAGI-1`, `.tmp`, or generated media,
 5. installs minimal smoke deps when missing (`build-essential`, Python headers/venv/pip, `ffmpeg`),
 6. copies R2 credentials to the pod only for restore and removes them on exit,
 7. restores the tuple and repairs non-relocatable venv shebangs,
@@ -306,8 +306,7 @@ If using the B200-published tuple on cheaper GPUs, the wrapper deliberately pass
 LongLive2 sequence-parallel inference is the experimental path for one stream across two GPUs.
 It is not the same as renting a two-GPU host for Scope.
 
-LongLive2 paid bring-up has now produced a cold H200 x2 BF16 SP render and published the BF16 SP tuple to R2.
-The tuple is published but not yet validated as a restore fast path.
+LongLive2 paid bring-up has now produced a cold H200 x2 BF16 SP render, published the BF16 SP tuple to R2, and validated that tuple on a fresh H100 NVL x2 restore render.
 The LongLive2 paper explicitly says NVFP4 acceleration is Blackwell-only; on A100/H100/H200, the intended compensation path is SP inference.
 Therefore the first Hopper paid lane is `bf16_sp`, not `nvfp4_s2`.
 
@@ -325,14 +324,15 @@ Instance lifecycle:
 2. prefer datacenter two-GPU listings with good disk/network and, when visible, better GPU topology;
 3. run `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` before spending;
 4. provision only with explicit `--create-instance`;
-5. for the next Hopper validation, restore `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` from R2 with no HF download fallback;
+5. for Hopper BF16 work, restore `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` from R2 with no HF download fallback;
 6. use build/download with `--no-restore --download-fallback` only when deliberately creating a new tuple or debugging the fallback path;
 7. confirm setup logs show the conservative `transformers` pin plus `x_clip_loss` and `decord` import guards passing;
-8. run one short offline SP smoke;
+8. run one short offline SP smoke or `--benchmark-only` for the same-seed `sp1`/`sp2` comparison;
 9. pull the MP4, logs, generated config, `ffprobe`, sampled frames/contact sheet, per-GPU telemetry, selected-offer JSON, credit/budget JSON, and phase report;
 10. publish a new tuple to R2 only if the smoke proves reusable imports/builds; use `--publish-r2-on-success` when the publish should happen before automatic teardown;
-11. validate the published tuple with a fresh restore run before calling it a default fast path;
-12. destroy the instance by default and verify `vastai show instances --raw`.
+11. validate any newly published tuple with a fresh restore run before calling it a default fast path;
+12. rely on the smoke wrapper's bounded retries for idempotent repo upload, R2 secret upload, and artifact pullback if direct SSH briefly refuses connections;
+13. destroy the instance by default and verify `vastai show instances --raw`.
 
 Latest LongLive2 telemetry:
 
@@ -341,7 +341,10 @@ Latest LongLive2 telemetry:
 3. Published R2 tuple: `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1`.
 4. First restore validation: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T235723Z/`.
 5. Restore phase completed in `559s`, then render failed because the restore path did not recreate the upstream Wan symlink.
-6. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates that symlink; rerun restore validation before promoting the tuple.
+6. First post-top-up retry: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T111231Z/`; selected H100 NVL x2 at `$5.873611111111112/h` and failed before restore because direct SSH refused the repo rsync transfer after remote deps.
+7. Successful fresh restore validation: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T111719Z/`; selected H100 NVL x2 at `$5.873611111111112/h`, restored in `502s`, rendered one nonblank `832x480` MP4, pulled artifacts, and tore down to `[]`.
+8. Benchmark-only run: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T114258Z/`; `sp1` was `0.380357 fps`, `sp2` was `0.252536 fps`, and `speedup_sp2_over_sp1=0.663945`.
+9. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates the Wan symlink, and `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` now retries idempotent transfer phases plus excludes local `.venv` and `artifacts/` from repo rsync.
 
 Acceptance:
 
@@ -391,7 +394,7 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --publish-r2-on-success
 ```
 
-Next restore-validation wrapper shape, only after enough credit is available:
+Benchmark-only wrapper shape for bounded research reruns:
 
 ```bash
 bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
@@ -403,17 +406,17 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --height 480 \
   --width 832 \
   --frames 32 \
-  --sp-size 2 \
   --dp-size 1 \
   --seed 0 \
-  --max-alive-min 20 \
-  --budget-estimate-min 20 \
-  --min-credit-usd 2.70 \
+  --benchmark-only \
+  --max-alive-min 45 \
+  --budget-estimate-min 45 \
+  --min-credit-usd 5.00 \
   --min-credit-reserve-usd 0.20 \
-  --max-estimated-spend-usd 3.00
+  --max-estimated-spend-usd 5.00
 ```
 
-Do not add `--download-fallback` to this validation; the point is to prove the R2 tuple plus LongLive2 Wan-link restore hook.
+Do not add `--download-fallback` to this benchmark; the point is to measure the validated R2 tuple path plus `sp1`/`sp2` speedup. The latest H100 NVL x2 result failed the speedup gate, so do not rerun automatically for live-path work.
 
 Blackwell NVFP4 shape, only after the BF16 SP path is proven or when explicitly targeting Blackwell:
 

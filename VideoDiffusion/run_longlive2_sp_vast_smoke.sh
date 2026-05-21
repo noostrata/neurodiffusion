@@ -59,6 +59,8 @@ LONGLIVE2_SHOT_DURATIONS="${LONGLIVE2_SHOT_DURATIONS:-}"
 RESTORE_TUPLE="${LONGLIVE2_VAST_RESTORE_TUPLE:-1}"
 DOWNLOAD_FALLBACK="${LONGLIVE2_VAST_DOWNLOAD_FALLBACK:-0}"
 INCLUDE_WAN="${LONGLIVE2_VAST_INCLUDE_WAN:-1}"
+RUN_SMOKE="${LONGLIVE2_VAST_RUN_SMOKE:-1}"
+RUN_BENCHMARK="${LONGLIVE2_VAST_RUN_BENCHMARK:-0}"
 PUBLISH_R2_ON_SUCCESS="${LONGLIVE2_VAST_PUBLISH_R2_ON_SUCCESS:-0}"
 PUBLISH_INCLUDE_WEIGHTS="${LONGLIVE2_VAST_PUBLISH_INCLUDE_WEIGHTS:-1}"
 PUBLISH_ENV_COMPRESSION="${LONGLIVE2_VAST_PUBLISH_ENV_COMPRESSION:-zstd}"
@@ -67,6 +69,8 @@ PUBLISH_BUILD_GPU_CLASS="${LONGLIVE2_VAST_PUBLISH_BUILD_GPU_CLASS:-hopper-sm90}"
 PUBLISH_VALIDATED_PROFILES="${LONGLIVE2_VAST_PUBLISH_VALIDATED_PROFILES:-longlive2_bf16_sp_offline_smoke}"
 DRY_RUN="${LONGLIVE2_VAST_DRY_RUN:-0}"
 SSH_READY_TIMEOUT_S="${LONGLIVE2_VAST_SSH_READY_TIMEOUT_S:-240}"
+TRANSFER_RETRIES="${LONGLIVE2_VAST_TRANSFER_RETRIES:-6}"
+TRANSFER_RETRY_SLEEP_S="${LONGLIVE2_VAST_TRANSFER_RETRY_SLEEP_S:-10}"
 
 SSH_KEY_PATH="${VAST_SSH_KEY_PATH:-${HOME}/.ssh/vast_neurodiffusion_rsa}"
 
@@ -113,6 +117,8 @@ Options:
   --download-fallback           If restore fails, download LongLive2 model artifacts from HF
   --include-wan                 Also download Wan2.2 base assets during fallback (default)
   --no-include-wan              Skip Wan2.2 base assets; only valid for cache-only/debug use
+  --run-benchmark               Run same-seed sp1/sp2 benchmark after restore/setup
+  --benchmark-only              Skip the single smoke render and run only the sp1/sp2 benchmark
   --publish-r2-on-success       Publish env/cache tuple to R2 after a successful render and before teardown
   --no-publish-weights          Publish env/wheelhouse only when --publish-r2-on-success is set
   --publish-env-compression <mode>
@@ -120,6 +126,8 @@ Options:
   --publish-weights-compression <mode>
                                   gzip|zstd|none for weights archive (default: ${PUBLISH_WEIGHTS_COMPRESSION})
   --allow-runtime-gpu-mismatch  Allow smXX runtime tag to select another GPU family
+  --transfer-retries <count>     Retry idempotent SSH transfer phases (default: ${TRANSFER_RETRIES})
+  --transfer-retry-sleep-s <sec> Sleep between transfer retries (default: ${TRANSFER_RETRY_SLEEP_S})
   --dry-run                     Print the plan; do not call Vast or SSH
 EOF
 }
@@ -273,6 +281,15 @@ while [[ $# -gt 0 ]]; do
       INCLUDE_WAN="0"
       shift
       ;;
+    --run-benchmark)
+      RUN_BENCHMARK="1"
+      shift
+      ;;
+    --benchmark-only)
+      RUN_SMOKE="0"
+      RUN_BENCHMARK="1"
+      shift
+      ;;
     --publish-r2-on-success)
       PUBLISH_R2_ON_SUCCESS="1"
       shift
@@ -292,6 +309,14 @@ while [[ $# -gt 0 ]]; do
     --allow-runtime-gpu-mismatch)
       ALLOW_RUNTIME_GPU_MISMATCH="1"
       shift
+      ;;
+    --transfer-retries)
+      TRANSFER_RETRIES="$2"
+      shift 2
+      ;;
+    --transfer-retry-sleep-s)
+      TRANSFER_RETRY_SLEEP_S="$2"
+      shift 2
       ;;
     --dry-run)
       DRY_RUN="1"
@@ -350,7 +375,29 @@ validate_profile_runtime_tuple() {
   fi
 }
 
+validate_retry_settings() {
+  python3 - "${TRANSFER_RETRIES}" "${TRANSFER_RETRY_SLEEP_S}" <<'PY'
+import sys
+
+retries = int(sys.argv[1])
+sleep_s = float(sys.argv[2])
+if retries < 1:
+    raise SystemExit("transfer retries must be >= 1")
+if sleep_s < 0:
+    raise SystemExit("transfer retry sleep must be >= 0")
+PY
+}
+
+validate_run_mode() {
+  if [[ "${RUN_SMOKE}" != "1" && "${RUN_BENCHMARK}" != "1" ]]; then
+    echo "[error] no LongLive2 work selected; enable smoke or benchmark mode." >&2
+    exit 1
+  fi
+}
+
 validate_profile_runtime_tuple
+validate_retry_settings
+validate_run_mode
 
 q() {
   printf "%q" "$1"
@@ -482,6 +529,47 @@ remote_scp_dir_from() {
 remote_scp_dir_from_guarded() {
   check_alive_budget
   remote_scp_dir_from "$@"
+}
+
+wait_for_ssh_ping() {
+  local timeout_s="${1:-60}"
+  local deadline=$((SECONDS + timeout_s))
+  local last_rc=0
+  while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+    if remote_ssh "true" >/dev/null 2>&1; then
+      SSH_READY="1"
+      return 0
+    fi
+    last_rc=$?
+    sleep 3
+  done
+  return "${last_rc}"
+}
+
+retry_idempotent_ssh_step() {
+  local desc="$1"
+  shift
+  local attempt=1
+  local rc=0
+  while [[ "${attempt}" -le "${TRANSFER_RETRIES}" ]]; do
+    check_alive_budget
+    set +e
+    "$@"
+    rc=$?
+    set -e
+    if [[ "${rc}" -eq 0 ]]; then
+      return 0
+    fi
+    if [[ "${attempt}" -ge "${TRANSFER_RETRIES}" ]]; then
+      echo "[error] ${desc} failed after ${attempt}/${TRANSFER_RETRIES} attempts (rc=${rc})" >&2
+      return "${rc}"
+    fi
+    echo "[warn] ${desc} failed on attempt ${attempt}/${TRANSFER_RETRIES} (rc=${rc}); retrying after SSH stabilization" >&2
+    sleep "${TRANSFER_RETRY_SLEEP_S}"
+    wait_for_ssh_ping 60 >/dev/null 2>&1 || true
+    attempt=$((attempt + 1))
+  done
+  return "${rc}"
 }
 
 cleanup_remote_secret() {
@@ -764,13 +852,13 @@ echo '[longlive2-vast] remote system deps ready'
 "
 }
 
-sync_repo_to_remote() {
-  echo "[longlive2-vast] syncing repo to ${REMOTE_ROOT}"
-  check_alive_budget
+sync_repo_to_remote_once() {
   remote_ssh_guarded "mkdir -p $(q "${REMOTE_ROOT}") $(q "${REMOTE_ROOT}/.secrets") $(q "${REMOTE_RUN_DIR}")"
   rsync -az \
     --timeout=120 \
     --exclude '.git' \
+    --exclude '.venv' \
+    --exclude 'artifacts' \
     --exclude 'VideoDiffusion/MAGI-1' \
     --exclude 'VideoDiffusion/.venv' \
     --exclude 'VideoDiffusion/.venv-krea' \
@@ -784,8 +872,12 @@ sync_repo_to_remote() {
     "${REPO_ROOT}/" "${VAST_SSH_USER}@${VAST_SSH_HOST}:${REMOTE_ROOT}/"
 }
 
-copy_r2_secret() {
-  check_alive_budget
+sync_repo_to_remote() {
+  echo "[longlive2-vast] syncing repo to ${REMOTE_ROOT}"
+  retry_idempotent_ssh_step "repo rsync upload" sync_repo_to_remote_once
+}
+
+copy_r2_secret_once() {
   if [[ ! -f "${R2_ENV_FILE}" ]]; then
     echo "[error] R2 env file not found: ${R2_ENV_FILE}" >&2
     exit 1
@@ -795,7 +887,11 @@ copy_r2_secret() {
     -o BatchMode=yes \
     -o StrictHostKeyChecking=accept-new \
     "${R2_ENV_FILE}" "${VAST_SSH_USER}@${VAST_SSH_HOST}:${REMOTE_R2_ENV}"
-  remote_ssh "chmod 600 $(q "${REMOTE_R2_ENV}")"
+  remote_ssh_guarded "chmod 600 $(q "${REMOTE_R2_ENV}")"
+}
+
+copy_r2_secret() {
+  retry_idempotent_ssh_step "R2 secret upload" copy_r2_secret_once
 }
 
 remote_setup_longlive2_clone_only() {
@@ -860,6 +956,24 @@ remote_run_smoke() {
   remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/run_longlive2_sp_offline.sh $(printf '%q ' "${run_args[@]}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/run_longlive2_sp_offline.wrapper.log")"
 }
 
+remote_run_benchmark() {
+  bench_args=(
+    --run-dir "${REMOTE_RUN_DIR}/sp_benchmark"
+    --profile "${LONGLIVE2_PROFILE}"
+    --height "${LONGLIVE2_HEIGHT}"
+    --width "${LONGLIVE2_WIDTH}"
+    --frames "${LONGLIVE2_FRAMES}"
+    --dp-size "${LONGLIVE2_DP_SIZE}"
+    --seed "${LONGLIVE2_SEED}"
+    --prompt "${LONGLIVE2_PROMPT}"
+    --src-dir "${REMOTE_VIDEO_DIR}/.vendors/LongLive2"
+  )
+  if [[ -n "${LONGLIVE2_SAMPLING_STEPS}" ]]; then
+    bench_args+=(--sampling-steps "${LONGLIVE2_SAMPLING_STEPS}")
+  fi
+  remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/run_longlive2_sp_benchmark.sh $(printf '%q ' "${bench_args[@]}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/run_longlive2_sp_benchmark.wrapper.log")"
+}
+
 remote_publish_r2_tuple() {
   publish_args=(
     --model longlive2
@@ -879,7 +993,7 @@ remote_publish_r2_tuple() {
 pull_artifacts() {
   echo "[longlive2-vast] pulling artifacts to ${LOCAL_OUT_DIR}"
   mkdir -p "${LOCAL_OUT_DIR}"
-  remote_scp_dir_from "${REMOTE_RUN_DIR}" "${LOCAL_OUT_DIR}"
+  retry_idempotent_ssh_step "artifact scp pullback" remote_scp_dir_from_guarded "${REMOTE_RUN_DIR}" "${LOCAL_OUT_DIR}"
   ARTIFACTS_PULLED="1"
 }
 
@@ -918,6 +1032,19 @@ PY
     --seed "${LONGLIVE2_SEED}" \
     --shot-prompt "A calm luminous ocean breathes slowly." \
     --shot-prompt "A frantic neon tunnel accelerates."
+  if [[ "${RUN_BENCHMARK}" == "1" ]]; then
+    echo "[longlive2-vast] preflight: benchmark dry run"
+    bash "${SCRIPT_DIR}/run_longlive2_sp_benchmark.sh" \
+      --dry-run \
+      --run-dir "${SCRIPT_DIR}/.tmp/${RUN_ID}_preflight_benchmark" \
+      --profile "${LONGLIVE2_PROFILE}" \
+      --height "${LONGLIVE2_HEIGHT}" \
+      --width "${LONGLIVE2_WIDTH}" \
+      --frames "${LONGLIVE2_FRAMES}" \
+      --dp-size "${LONGLIVE2_DP_SIZE}" \
+      --seed "${LONGLIVE2_SEED}" \
+      --prompt "${LONGLIVE2_PROMPT}"
+  fi
   echo "[longlive2-vast] preflight: NVFP4-on-sm90 guard should fail"
   if bash "${BASH_SOURCE[0]}" \
     --dry-run \
@@ -964,6 +1091,8 @@ frames=${LONGLIVE2_FRAMES}
 sp_size=${LONGLIVE2_SP_SIZE}
 dp_size=${LONGLIVE2_DP_SIZE}
 seed=${LONGLIVE2_SEED}
+run_smoke=${RUN_SMOKE}
+run_benchmark=${RUN_BENCHMARK}
 schedule_csv=${LONGLIVE2_SCHEDULE_CSV}
 local_out_dir=${LOCAL_OUT_DIR}
 phase_report=${PHASE_REPORT}
@@ -971,6 +1100,8 @@ publish_r2_on_success=${PUBLISH_R2_ON_SUCCESS}
 publish_include_weights=${PUBLISH_INCLUDE_WEIGHTS}
 publish_env_compression=${PUBLISH_ENV_COMPRESSION}
 publish_weights_compression=${PUBLISH_WEIGHTS_COMPRESSION}
+transfer_retries=${TRANSFER_RETRIES}
+transfer_retry_sleep_s=${TRANSFER_RETRY_SLEEP_S}
 EOF
   exit 0
 fi
@@ -1015,9 +1146,16 @@ mark_phase "setup_longlive2_done"
 mark_phase "restore_or_download_start"
 remote_restore_or_download
 mark_phase "restore_or_download_done"
-mark_phase "longlive2_run_start"
-remote_run_smoke
-mark_phase "longlive2_run_done"
+if [[ "${RUN_SMOKE}" == "1" ]]; then
+  mark_phase "longlive2_run_start"
+  remote_run_smoke
+  mark_phase "longlive2_run_done"
+fi
+if [[ "${RUN_BENCHMARK}" == "1" ]]; then
+  mark_phase "longlive2_benchmark_start"
+  remote_run_benchmark
+  mark_phase "longlive2_benchmark_done"
+fi
 if [[ "${PUBLISH_R2_ON_SUCCESS}" == "1" ]]; then
   mark_phase "publish_r2_start"
   remote_publish_r2_tuple

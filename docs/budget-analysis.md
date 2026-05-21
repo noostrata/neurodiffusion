@@ -221,7 +221,7 @@ Vast credit moved from `$15.519453` to `$11.424968`.
 
 ### Vast LongLive2 BF16 SP bring-up (2026-05-21)
 
-Paid H200 x2 run ladder; every created instance was destroyed and `vastai show instances --raw` returned `[]` after teardown.
+Paid H100/H200 x2 run ladder; every created instance was destroyed and `vastai show instances --raw` returned `[]` after teardown.
 
 | Run | Outcome | Observed phase spend | Elapsed | Local artifacts |
 | --- | --- | ---: | ---: | --- |
@@ -231,6 +231,9 @@ Paid H200 x2 run ladder; every created instance was destroyed and `vastai show i
 | `longlive2_sp_vast_smoke_20260520T232208Z` | failed before render: missing Wan2.2 base asset/link | about `$0.895` | `416s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T232208Z/` |
 | `longlive2_sp_vast_smoke_20260520T233039Z` | succeeded: cold render + R2 publish + local pullback | about `$3.170` | `1474s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/` |
 | `longlive2_sp_vast_smoke_20260520T235723Z` | restore fetched tuple, then failed before render on missing restored Wan symlink | about `$1.682` | `782s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T235723Z/` |
+| `longlive2_sp_vast_smoke_20260521T111231Z` | failed before restore: direct SSH refused repo rsync after remote deps | about `$0.109` | `67s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T111231Z/` |
+| `longlive2_sp_vast_smoke_20260521T111719Z` | succeeded: R2 restore + Wan link + render + local pullback | about `$1.713` | `1050s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T111719Z/` |
+| `longlive2_sp_vast_smoke_20260521T114258Z` | succeeded mechanically: benchmark showed `sp2` slower than `sp1` | about `$1.437` | `881s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T114258Z/` |
 
 Successful cold-render details:
 
@@ -244,28 +247,39 @@ Restore validation details:
 
 1. The first fresh restore fetched/extracted the tuple in `559s`, so R2 restore already removes the dependency build and HF download steps.
 2. The render then failed because tuple restore had not recreated the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` symlink.
-3. The restore script now recreates that symlink, and the fixed path is ready to rerun after the user topped up Vast credit to `$20.639956`.
+3. The restore script now recreates that symlink.
+4. The first retry after top-up did not test restore; it failed earlier at repo rsync after the host had passed SSH auth and remote dependency install.
+5. The paid wrapper now retries idempotent repo upload, R2 secret upload, and artifact pullback transfer phases before cutting a run.
+6. The successful restore validation restored in `502s`, rendered in the wrapper's `132s` run phase, pulled artifacts in `36s`, and tore down in `5s`.
+7. Repo upload took `254s` on the successful restore run because local `.venv` and `artifacts/` were still included; the wrapper now excludes both for lower startup spend.
+
+Benchmark details:
+
+1. Benchmark-only run restored in `473s`, ran benchmark phase in `214s`, pulled artifacts in `73s`, and tore down in `6s`.
+2. Repo sync optimization worked: `repo_sync` was `10s`, down from `254s` on the restore run.
+3. `sp1`: `84.131520s`, `0.380357 fps`, GPU 0 active and GPU 1 idle.
+4. `sp2`: `126.714834s`, `0.252536 fps`, both H100 NVLs active.
+5. `speedup_sp2_over_sp1=0.663945`, so the extra GPU increased hourly cost while decreasing measured wall throughput.
 
 Budget implication:
 
-1. Another H200 x2 restore validation needs roughly `$2.50-$3.00` available for an `18-20 min` capped run; the latest preflight estimated `$2.632027` for `20 min` and required `$2.832027` including reserve.
-2. A same-instance `sp1` vs `sp2` comparison should be budgeted separately after restore validation.
-3. Blackwell NVFP4 work should not start until more credit is available; it has a different tuple family and likely a higher hourly rate.
-4. Current paid order is restore validation first, SP benchmark second, persistent-runner design third, Blackwell/NVFP4 later.
-5. Local storage is no longer a budget concern for historical media: `artifacts/` was pruned to about `3.1M`, with telemetry retained and disposable MP4/PNG/JPG media deleted after QA.
+1. The H100 NVL x2 benchmark fit inside the `45 min` cap at about `$1.437`.
+2. Current credit after the benchmark was about `$17.385469`; active instances were `[]`.
+3. Do not spend more on Hopper BF16 SP live-runner work unless deliberately rerunning for research; the measured speedup fails the live threshold.
+4. Blackwell NVFP4 work should not start without explicit budget approval; it has a different tuple family and likely a higher hourly rate.
+5. Local storage is no longer a budget concern for historical media: `artifacts/` is about `5.5M`, with telemetry retained and intentional proof MP4/contact sheets kept.
 
 Latest no-spend readiness check:
 
 | Field | Value |
 | --- | ---: |
-| Vast credit | `$20.639956` |
+| Vast credit | `$17.385469` |
 | Active instances | `0` |
-| Selected restore-validation offer | `H200 x2` offer `28747631` |
-| Advertised rate | `$7.896080928126769/h` |
-| Planned cap | `20 min` |
-| Estimated spend | `$2.632027` |
-| Required credit with reserve | `$2.832027` |
-| Result | ready for paid restore-only validation after explicit launch approval |
+| Latest successful benchmark offer | `H100 NVL x2` offer `29153227` |
+| Advertised rate | `$5.873611111111112/h` |
+| Benchmark spend | about `$1.437403` |
+| Benchmark result | `sp2` slower than `sp1`, `0.663945x` |
+| Result | stop Hopper BF16 SP as a live path; keep Scope/LongLive as realtime route |
 
 | Instance | GPU | Resolution | Invoice cost | Notes |
 | ---: | --- | --- | ---: | --- |
@@ -306,7 +320,7 @@ Cost interpretation:
 
 LongLive2 SP is the experimental one-stream two-GPU path.
 It should be costed differently from Scope because the first useful test may include source builds, extension builds, model downloads, and R2 tuple publish.
-Local plumbing is implemented. The paid H200 x2 ladder has now produced one successful cold BF16 SP render, published the tuple to R2, and attempted one fresh restore validation. The restore validation fetched/extracted the tuple but failed before render on a missing restored Wan symlink; the restore script now patches that path. All paid runs pulled logs locally and tore down cleanly.
+Local plumbing is implemented. The paid H100/H200 x2 ladder has now produced one successful cold BF16 SP render, published the tuple to R2, and validated a fresh R2 restore/render on H100 NVL x2. All paid runs tore down cleanly; successful runs pulled local video/log artifacts.
 
 Known anchor:
 
@@ -330,7 +344,7 @@ LongLive2 first-run budgeting:
 3. cold BF16 SP build/publish smokes should use explicit modest geometry (`480x832`, `32` frames); use about `45 min` for render-only bring-up or `60 min` when also attempting R2 publish before teardown;
 4. the wrapper now writes `selected_offer.json`, `credit_check.json`, `budget_plan.json`, and `phase_report.json` for spend analysis;
 5. the default planned spend gate is `45 min` at `<= $8/h`, capped at about `$6.00` before storage/operation noise;
-6. the current BF16 SP tuple is already published, so the next paid run should validate restore with no HF download fallback;
+6. the current BF16 SP tuple is already published and restore-validated, and the benchmark-only run showed Hopper BF16 SP should not be promoted to a live path;
 7. a published tuple is not a validated restore tuple until a fresh instance restores it and renders again;
 8. a failed import/build/restore should still pull logs locally before teardown unless SSH never became reachable;
 9. do not keep an instance alive just to preserve a loaded process;

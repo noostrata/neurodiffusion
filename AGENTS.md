@@ -144,17 +144,20 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - NVFP4 acceleration is Blackwell-only per the LongLive2 paper limitation. On A100/H100/H200, use `bf16_sp` sequence-parallel inference as the compensation path unless intentionally debugging NVFP4/FourOverSix.
 - The upstream SP script disables `kv_quant` under Ulysses SP today; do not claim SP+KV-quant speedups unless a real run proves them.
 - A valid LongLive2 two-card run must show one output stream plus per-GPU telemetry proving both cards were active.
-- Latest cold LongLive2 two-card run succeeded on H200 x2 and published `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` to R2. Treat it as `published_tuple`, not `validated_restore_tuple`, until a fresh restore render passes.
-- The first fresh restore validation fetched/extracted the tuple but failed before render because the restored cache did not recreate LongLive2's vendor-local Wan symlink. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates that link; the next paid validation should run with restore enabled and no HF download fallback.
+- Latest cold LongLive2 two-card run succeeded on H200 x2 and published `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` to R2.
+- Latest fresh LongLive2 restore validation succeeded on H100 NVL x2 with that tuple, produced a local nonblank `832x480` MP4, showed both cards at `100%` max utilization, and tore down cleanly. Treat the tuple as `validated_restore_tuple` for Hopper BF16 SP.
+- The first fresh restore validation failed because the restored cache did not recreate LongLive2's vendor-local Wan symlink. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates that link, and the successful restore validation proved the hook on a fresh host.
 - `VideoDiffusion/download_longlive2_models.sh` should work with either `hf`/`huggingface-cli` or the Python `huggingface_hub` fallback from the LongLive2 venv.
 - LongLive2 runtime needs both LongLive2 checkpoint artifacts and the Wan2.2 base tree. Keep Wan download/linking enabled unless intentionally doing cache-only debugging.
 - Use `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --publish-r2-on-success` when the intent is to publish the first reusable tuple before teardown after a successful render.
+- Latest LongLive2 H100 NVL x2 benchmark-only run restored once, ran same-seed `sp1`/`sp2`, pulled artifacts, and tore down cleanly. Result: `sp2` was slower than `sp1` (`speedup_sp2_over_sp1=0.663945`), so do not build the persistent LongLive2 live runner for the Hopper BF16 SP path.
 - R2 may cache the LongLive2 env, built extensions, checkpoints, and generated merged/materialized checkpoints; it cannot preserve a live NCCL process group or GPU-resident model.
 - Run `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` before paid LongLive2 work; it should pass local checks, dry-run, offer selection, active-instance, credit, and budget gates.
 - First LongLive2 paid smoke defaults should stay small and explicit: `480x832`, `32` frames, `sp_size=2`, `dp_size=1`, `seed=0`, max-alive around `45 min` for render-only or `60 min` when publishing R2 before teardown, and failure-safe artifact pullback enabled by default.
 - EEG integration comes after distributed inference is proven: offline prompt schedule first, persistent runner second, live output third.
 - Paid LongLive2 tests must use explicit two-GPU selection and teardown by default.
-- Do not promote LongLive2 as the default realtime path until it beats the one-GPU Scope baseline on speed, cost, and visual acceptability.
+- `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` retries idempotent repo upload, R2 secret upload, and artifact pullback phases because Vast direct SSH can briefly refuse connections after first auth readiness.
+- Keep Scope/LongLive as the default realtime EEG path; LongLive2 BF16 SP remains offline/research-only unless a future Blackwell/NVFP4 or upstream-runtime change proves useful speedup.
 
 ## Local Artifact Rule
 

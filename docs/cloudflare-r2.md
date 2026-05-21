@@ -432,18 +432,18 @@ LongLive2 R2 cannot persist:
 Current LongLive2 BF16 SP tuple state:
 
 1. `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` has been published to R2 after a successful H200 x2 cold render.
-2. The tuple currently has `published_tuple` status, not `validated_restore_tuple` status.
+2. The tuple now has `validated_restore_tuple` status for Hopper BF16 SP after a fresh H100 NVL x2 restore/render.
 3. Verified R2 objects:
    - env archive: `neurodiffusion/env-cache/longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1/venv_longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1.tar.zst` (`3,977,262,169` bytes);
    - weights archive: `neurodiffusion/weights/longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1/weights_longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1.tar` (`44,203,243,520` bytes);
    - wheelhouse: `flash_attn-2.8.3-cp311-cp311-linux_x86_64.whl` (`256,043,372` bytes) plus `antlr4_python3_runtime-4.9.3-py3-none-any.whl`.
 4. First fresh restore validation fetched/extracted the tuple in `559s` but failed because the restored cache did not recreate LongLive2's vendor-local Wan symlink.
 5. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates `VideoDiffusion/.vendors/LongLive2/wan_models/Wan2.2-TI2V-5B` after extracting the LongLive2 cache.
-6. The next paid restore validation should run with no HF download fallback so it proves this R2 path directly.
+6. Successful restore validation `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T111719Z/` restored the tuple in `502s`, recreated the Wan link, rendered one nonblank `832x480` MP4, pulled artifacts, and tore down cleanly.
 
 First publish rule:
 
-1. local plumbing exists, but do not publish a LongLive2 tuple from an unvalidated build and do not call any tuple canonical until restore validation passes;
+1. local plumbing exists, but do not publish a LongLive2 tuple from an unvalidated build and do not call any new tuple canonical until restore validation passes;
 2. first prove import checks plus a minimal render on the intended GPU architecture;
 3. publish before teardown only if the environment is reusable; the paid wrapper supports this with `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --publish-r2-on-success`;
 4. treat publication and restore validation as separate states:

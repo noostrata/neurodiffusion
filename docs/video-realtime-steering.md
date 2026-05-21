@@ -28,11 +28,11 @@ Definitions:
 | Rank | Stack | Why | Indicative hourly rate |
 | --- | --- | --- | ---: |
 | 1 | Scope + LongLive on B200/Hopper, with `RTX 5090/L40S` candidates | Best proven realtime EEG target; Scope-native control; B200 already passed `320x576` | dynamic Vast rates |
-| 2 | LongLive2 sequence-parallel direct backend | Best researched path for one stream across two GPUs; not yet validated in this repo | likely two-GPU Vast rates |
-| 3 | Scope + StreamDiffusion V2 / RewardForcing | Same Scope control surface, useful follow-on A/B backends | similar 24GB tier |
-| 4 | Causal Forcing++ direct backend | Strong 1-step/2-step AR research path; needs custom adapter | unknown |
-| 5 | Krea Realtime 14B | Higher quality, heavier runtime; test after Scope control is proven | `~0.94+` 5090, B200 much higher |
-| 6 | MAGI-1 4.5B/24B | Async or chunked high-quality background renderer | A100/Hopper dependent |
+| 2 | Scope + StreamDiffusion V2 / RewardForcing | Same Scope control surface, useful follow-on A/B backends | similar 24GB tier |
+| 3 | Causal Forcing++ direct backend | Strong 1-step/2-step AR research path; needs custom adapter | unknown |
+| 4 | Krea Realtime 14B | Higher quality, heavier runtime; test after Scope control is proven | `~0.94+` 5090, B200 much higher |
+| 5 | MAGI-1 4.5B/24B | Async or chunked high-quality background renderer | A100/Hopper dependent |
+| 6 | LongLive2 sequence-parallel BF16 direct backend | Restore-validated and mechanically works, but H100 NVL x2 `sp2` was slower than `sp1` (`0.663945x`), so keep it offline/research-only unless Blackwell/NVFP4 changes the result | two-GPU Vast rates |
 
 ## Attention/backend policy
 
@@ -45,7 +45,7 @@ Definitions:
 
 1. Krea defaults to `1 GPU = 1 realtime stream`.
 2. Scale Krea with pod count/stream count first.
-3. Use single-stream multi-GPU only after proving real speedup on the exact path; LongLive2 SP is the current candidate.
+3. Use single-stream multi-GPU only after proving real speedup on the exact path; current LongLive2 Hopper BF16 SP did not prove it.
 4. MAGI uses the existing calibration ladder for strict chunk-time targets.
 
 ## Runtime defaults for steering
@@ -114,7 +114,7 @@ LongLive2 EEG steering is chunk-scheduled offline today; live prompt switching n
 1. No-cost selftests pass, including fake Scope OSC prompt delivery and the Scope/Vast matrix selftest.
 2. Scope/LongLive cold setup reaches pipeline `loaded`.
 3. Sweep or matrix run proves at least one tier at `>=24 fps`, first frame `<=2s`, synthetic EEG OSC updates, local MP4 pullback, `phase_report.json`, and artifact QA. Current best validated Scope/LongLive point is `352x576` on H200-class hardware.
-4. For LongLive2 SP, a two-GPU offline smoke must show two active ranks, one output stream, per-GPU utilization, local MP4 pullback, and teardown proof before any live EEG work.
+4. For LongLive2 SP, a two-GPU offline smoke must show two active ranks, one output stream, per-GPU utilization, local MP4 pullback, teardown proof, and useful `sp2/sp1` speedup before any live EEG work; current H100 NVL x2 BF16 SP failed the speedup gate.
 5. Steering latency run (20 EEG-triggered changes) reports acceptable prompt-to-visible-change `p50/p90`.
 6. 30-minute soak has no OOM/restart.
 7. Equal-latency quality A/B confirms selected tier/backend beats baseline.

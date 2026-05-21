@@ -19,6 +19,9 @@ DEFAULT_ARTIFACTS_ROOT = REPO_ROOT / "artifacts"
 MEDIA_SUFFIXES = {".mp4", ".png", ".jpg", ".jpeg"}
 DEFAULT_KEEP_GLOBS = (
     "runs/longlive2/*/offline/videos/*.mp4",
+    "runs/longlive2/*/offline/qa/contact_sheet.jpg",
+    "runs/longlive2/*/sp_benchmark/*/videos/*.mp4",
+    "runs/longlive2/*/sp_benchmark/*/qa/contact_sheet.jpg",
 )
 
 
@@ -152,11 +155,13 @@ def selftest() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp) / "artifacts"
         keep = root / "runs/longlive2/test/offline/videos/keep.mp4"
+        keep_contact = root / "runs/longlive2/test/sp_benchmark/sp1/qa/contact_sheet.jpg"
         drop = root / "runs/scope-longlive/test/webrtc_capture.mp4"
         frame = root / "runs/scope-longlive/test/frames/frame_000024.png"
         report = root / "runs/scope-longlive/test/run_report.json"
         for path, data in (
             (keep, b"keep-video"),
+            (keep_contact, b"keep-contact"),
             (drop, b"drop-video"),
             (frame, b"drop-frame"),
             (report, b"{}"),
@@ -174,6 +179,7 @@ def selftest() -> int:
         )
         run_prune(args)
         assert keep.exists(), "kept proof video was deleted"
+        assert keep_contact.exists(), "kept proof contact sheet was deleted"
         assert report.exists(), "non-media report was deleted"
         assert not drop.exists(), "video candidate was not deleted"
         assert not frame.exists(), "frame candidate was not deleted"

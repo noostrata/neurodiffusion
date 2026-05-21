@@ -214,6 +214,7 @@ Implemented files:
    - supports `--preflight` for no-spend local checks, dry-run, offer selection, active-instance check, credit check, and budget gate;
    - writes sanitized selected-offer, credit, budget, phase-marker, and phase-report artifacts;
    - enforces `--max-alive-min` around paid remote SSH phases;
+   - retries idempotent SSH transfer phases with `--transfer-retries` and `--transfer-retry-sleep-s`;
    - attempts best-effort artifact pullback before teardown even when setup/download/render fails;
    - restores R2 tuple when available;
    - build/download fallback only when explicitly allowed;
@@ -305,29 +306,40 @@ Current paid evidence:
     - wheelhouse includes `flash_attn-2.8.3-cp311-cp311-linux_x86_64.whl`, `256,043,372` bytes.
 13. A fresh restore validation, `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T235723Z/`, restored the R2 tuple in `559s` but failed at `torchrun` because the restore path did not recreate the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` symlink.
 14. The repo now patches that restore-boundary failure in `VideoDiffusion/restore_r2_prebuild_model.sh`, which recreates and checks the Wan runtime link after tuple extraction.
+15. The first paid retry after top-up, `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T111231Z/`, failed before restore when direct SSH refused the repo rsync transfer after remote deps; the wrapper now retries idempotent transfer phases.
+16. The next restore validation, `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T111719Z/`, succeeded on H100 NVL x2 offer `29153227` at `$5.873611111111112/h`.
+17. The successful restore run fetched/extracted the R2 tuple in `502s`, recreated the Wan symlink, initialized `sp_sizes=[2]`, and produced one local MP4 at `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T111719Z/offline/videos/rank0-0-0_regular_sp2.mp4`.
+18. `ffprobe` confirmed `832x480`, `125` frames, `24 fps`, and `5.208s`; artifact QA was nonblank; both H100 NVLs reached `100%` max utilization and about `35771 MiB` used.
+19. Phase telemetry for the restore run: total elapsed `1050s`, SSH readiness `45s`, remote deps `20s`, repo upload `254s`, R2 secret copy `15s`, setup clone `29s`, restore `502s`, render/report `132s`, artifact pullback `36s`, teardown `5s`.
+20. The run observed about `$1.713137` spend and left active instances at `[]`; then-current credit after the restore run was about `$18.916698`.
+21. Because repo upload took `254s`, the wrapper now excludes local `.venv` and `artifacts/` from rsync.
+22. Benchmark-only run `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T114258Z/` succeeded mechanically on the same H100 NVL x2 offer and proved repo upload optimization: `repo_sync` dropped to `10s`.
+23. Benchmark result: `sp1` wall `84.131520s` / `0.380357 fps`; `sp2` wall `126.714834s` / `0.252536 fps`; `speedup_sp2_over_sp1=0.663945`; acceptance hint `stop`.
+24. Both benchmark outputs were valid and nonblank at `832x480`, `125` frames, `24 fps`, `5.208s`; `sp1` used GPU 0 only, while `sp2` used both H100 NVLs at `100%` max utilization and about `35771 MiB` each.
+25. Benchmark phase telemetry: total elapsed `881s`, restore `473s`, benchmark `214s`, artifact pullback `73s`, teardown `6s`, estimated spend about `$1.437403`.
 
 Current state:
 
 1. active Vast instances: `0`;
-2. current Vast credit after the top-up: `$20.639956`;
-3. latest preflight selected H200 x2 offer `28747631` at `$7.896080928126769/h`; re-query before spending because Vast offers move;
-4. a LongLive2 MP4 and a published BF16 SP R2 tuple exist;
-5. the R2 tuple is `published_tuple`, not yet `validated_restore_tuple`, because the fixed Wan-link restore path still needs a fresh paid rerun;
-6. no `sp1` vs `sp2` speedup result exists yet.
+2. current Vast credit after the benchmark-only run: about `$17.385469`;
+3. latest successful paid benchmark selected H100 NVL x2 offer `29153227` at `$5.873611111111112/h`; re-query before spending because Vast offers move;
+4. LongLive2 MP4 proof clips exist and the BF16 SP SM90 R2 tuple is now a `validated_restore_tuple`;
+5. the validated tuple is `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1`;
+6. `sp2` was slower than `sp1`: `speedup_sp2_over_sp1=0.663945`.
 7. local artifact retention is telemetry-first; historical Scope/LongLive media was pruned after QA and only intentional proof clips should remain.
-8. the 2026-05-21 restore-validation preflight passed with planned spend `$2.632027` for a `20 min` cap and required credit `$2.832027` including reserve.
+8. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --benchmark-only` is validated for bounded future reruns, but the Hopper BF16 result does not justify a live runner.
 
 ## Current Ordered Plan
 
 The live checklist is `longlive2plan.md`. The short version is:
 
 1. No-spend hygiene: keep `bash scripts/check.sh`, `git diff --check`, `vastai show instances --raw`, and `python3 scripts/prune_artifacts.py` clean before any paid work.
-2. Budget gate: the current top-up satisfies the tight `$2.50-$3.00` restore-validation window plus teardown margin.
-3. Restore validation: run one H200 x2 `bf16_sp` restore-only smoke with `--download-fallback` off to prove the R2 tuple and Wan-link hook.
-4. SP benchmark: only after restore passes, compare `sp_size=1` and `sp_size=2` under same prompt/seed/resolution/frame count.
-5. Decision: stop LongLive2 as a live path below `1.3x` speedup, keep it research-only at `1.3x-1.6x`, and design a persistent runner only at `>=1.6x`.
-6. Live fallback: keep Daydream Scope + LongLive as the realtime EEG path until LongLive2 beats it on speed, cost, and visual acceptability.
-7. Blackwell/NVFP4: defer until BF16 SP evidence or explicit budget justifies it; do not chase NVFP4 speedups on H100/H200.
+2. Budget gate: current credit is enough for focused follow-up, but Hopper BF16 SP should not be rerun automatically because the speedup gate failed.
+3. Restore validation is complete for the BF16 SP SM90 tuple.
+4. SP benchmark is complete and failed the live threshold (`0.663945x`).
+5. Decision: stop LongLive2 Hopper BF16 SP as a live path for now; keep it research/offline only.
+6. Live fallback: keep Daydream Scope + LongLive as the realtime EEG path.
+7. Blackwell/NVFP4: only revisit if explicitly budgeted; do not chase NVFP4 speedups on H100/H200.
 
 ## Test Plan
 
@@ -397,7 +409,7 @@ Record:
 
 Decision rule:
 
-1. continue two-GPU work if speedup is `>=1.3x`;
+1. continue two-GPU work if speedup is `>=1.3x`; the H100 NVL x2 BF16 benchmark measured `0.663945x`;
 2. make two-GPU SP a preferred path only if speedup is `>=1.6x` and cost per realtime frame is competitive with the best one-GPU Scope baseline;
 3. abandon two-GPU SP for live work if speedup is marginal or unstable, while keeping it as an offline render option.
 
@@ -444,12 +456,12 @@ The offline `torchrun` smoke is only the proof that the model/runtime is viable.
 
 Default order from here:
 
-1. validate the patched BF16 SP tuple restore on a fresh two-GPU Hopper host;
-2. measure restore-phase time and compare it to the cold build/download path;
-3. if restore validation passes, treat `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` as the default Hopper fast path;
-4. test one-GPU vs two-GPU speedup with `VideoDiffusion/run_longlive2_sp_benchmark.sh`;
-5. test NVFP4 S2 on SM100;
-6. publish and then separately validate the NVFP4 S2 tuple;
+1. treat `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` as the validated Hopper BF16 SP restore tuple;
+2. do not build a Hopper BF16 SP live runner because `sp2` was slower than `sp1`;
+3. keep Scope/LongLive as the realtime EEG path;
+4. use `VideoDiffusion/run_longlive2_sp_benchmark.sh` inside an already prepared runtime only for future manual research reruns;
+5. test NVFP4 S2 on SM100 only with explicit budget;
+6. publish and then separately validate the NVFP4 S2 tuple if that lane is pursued;
 7. build a persistent runner only after a distributed inference lane has useful speedup.
 
 Quality knobs:
@@ -467,8 +479,8 @@ Cost knobs:
 3. stop immediately after a failed import/build unless the error is clearly fixable within the current budget;
 4. publish successful env/model tuples before terminating the builder instance when the render proves the env is reusable;
 5. never keep an instance alive just to preserve a loaded model unless the user explicitly asks.
-6. keep first-smoke geometry explicit and modest (`480x832`, `32` frames) until the restore tuple is validated.
-7. for the next restore validation, do not allow HF download fallback; the point is to prove R2 restore plus the Wan-link hook.
+6. keep benchmark geometry explicit and modest (`480x832`, `32` frames) until the speedup result justifies larger tests.
+7. exclude local `.venv` and `artifacts/` from repo upload; the validated restore run spent `254s` in rsync before that optimization.
 
 ## Done State
 
@@ -490,5 +502,5 @@ First paid validation is done when:
 
 Current completion status:
 
-1. Items 1-4 and 6 are complete for the cold path.
-2. Item 5 is not complete; the first restore validation exposed and patched a missing Wan-link hook, but the fixed restore path still needs a paid rerun.
+1. Items 1-6 are complete for the cold-publish plus fresh-restore path.
+2. The `sp1` vs `sp2` benchmark is complete and failed the speedup gate, so do not build the persistent Hopper BF16 SP live runner.

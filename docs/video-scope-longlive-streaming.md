@@ -29,7 +29,7 @@ Latest empirical reference:
 
 - `docs/video-scope-longlive-observations.md`
 - runtime tuple: `scope_auto_py312_torch2.9.1_cu128_sm100`
-- recorded local video: `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4`
+- recorded local media was pruned after QA; retained evidence is in `docs/video-scope-longlive-observations.md`
 - latest cheap-GPU result: `RTX 4090 x1` generated coherent output but failed realtime at `11.310 fps` for `320x576`.
 
 ## Why Scope + LongLive
@@ -301,7 +301,7 @@ The sweep runner is the cost/time optimization path:
 5. reloads LongLive at each requested resolution;
 6. runs WebRTC capture and synthetic EEG for every resolution;
 7. pulls all artifacts locally before teardown;
-8. writes per-resolution `run_report.json`, `artifact_qa.json`, and `contact_sheet.jpg`;
+8. writes per-resolution `run_report.json`, `artifact_qa.json`, and transient contact sheets for QA;
 9. writes aggregate `sweep_report.json` and `sweep_report.md`.
 
 Use this when the question is the maximum realtime resolution on one selected GPU.
@@ -378,8 +378,8 @@ Safe behavior:
 1. Without `--create-instance`, the script requires `VAST_INSTANCE_ID` and will not create paid compute.
 2. With `--create-instance`, it queries/selects an offer, provisions a Vast SSH instance, and destroys that instance on exit unless `--keep-instance` is passed.
 3. The R2 secret is copied to the instance only for tuple restore and removed during cleanup.
-4. Output video, sampled frames, logs, `run_report.json`, `phase_report.json`, `artifact_qa.json`, and `contact_sheet.jpg` are pulled/written under `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/<run_id>/` by default.
-5. A flat video copy is also written under `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/<run_id>/` by default.
+4. Output video, sampled frames, logs, `run_report.json`, `phase_report.json`, `artifact_qa.json`, and transient QA media are pulled/written under `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/<run_id>/` by default.
+5. After QA, prune bulky MP4/PNG/JPG media with `python3 scripts/prune_artifacts.py --delete`; retained reports/logs/manifests are the durable evidence.
 
 Acceptance gate:
 
@@ -417,7 +417,7 @@ Observed on 2026-05-15:
 2. 90s WebRTC receive: `2203` frames, `24.868 fps`, first frame `1.507s`.
 3. 30s recorded WebRTC capture: `743` frames, `25.040 fps`, first frame `0.579s`.
 4. Synthetic EEG `balancer` policy sent Scope OSC updates successfully during generation.
-5. Local MP4: `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4`.
+5. Local media was pruned after QA; telemetry remains in `docs/video-scope-longlive-observations.md`.
 6. R2 tuple: `scope_auto_py312_torch2.9.1_cu128_sm100`.
 7. Current fresh-instance lower bound after tuple restore is still server start plus load: about `7s + 19s` in the B200 run, before WebRTC first-frame latency.
 
@@ -428,8 +428,8 @@ Observed on 2026-05-20:
 1. `RTX 4090 x1` at `320x576` generated coherent neon tunnel output.
 2. WebRTC receive: `322` frames, `11.310 fps`, first frame `2.480s`.
 3. Synthetic EEG emitted `3` state changes during the run.
-4. Local MP4: `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4`.
-5. Local frame: `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/scope_longlive_vast_smoke_20260520T190833Z_frame_000024.png`.
+4. Local media was pruned after QA.
+5. The retained result is the report/log telemetry under the run root.
 6. Result: fail for realtime at `320x576`; keep 4090 only for protocol/quality checks or a future lower-resolution experiment.
 
 ## Latest H200 Matrix Result

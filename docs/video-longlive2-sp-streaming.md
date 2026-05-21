@@ -294,7 +294,7 @@ Current paid evidence:
 4. The fifth attempt, `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/`, succeeded end-to-end on the cold build/download path.
 5. That successful run wrote `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/offline/videos/rank0-0-0_regular_sp2.mp4`.
 6. `ffprobe` confirmed H.264, `832x480`, `125` frames, `24 fps`, and `5.208s`.
-7. Artifact QA reported nonblank luma samples and a contact sheet at `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/offline/qa/contact_sheet.jpg`.
+7. Artifact QA reported nonblank luma samples; the contact sheet was later pruned as disposable local media.
 8. GPU telemetry showed both H200s active with max `36341 MiB` used on each card and `100%` max utilization.
 9. Phase telemetry: total wrapper elapsed `1474s`, cold restore/download/build phase `235s`, render phase `125s`, R2 publish phase `972s`, artifact pullback `28s`, teardown `3s`.
 10. The estimated compute spend for that run was about `$3.170`.

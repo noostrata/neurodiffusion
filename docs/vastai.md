@@ -284,8 +284,10 @@ The wrapper:
 8. loads LongLive with `SCOPE_VACE_ENABLED=false`;
 9. records WebRTC output while synthetic EEG drives the Scope OSC sink;
 10. pulls MP4, sampled frames, logs, and `run_report.json` to `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/<run_id>/` by default;
-11. writes `phase_report.json`, `artifact_qa.json`, and `contact_sheet.jpg` locally;
+11. writes `phase_report.json`, `artifact_qa.json`, and transient QA media locally;
 12. destroys a wrapper-created instance by default.
+
+After QA, prune bulky MP4/PNG/JPG media with `python3 scripts/prune_artifacts.py --delete` unless the user explicitly wants to retain a final visual deliverable.
 
 Acceptance is encoded in `run_report.json`:
 

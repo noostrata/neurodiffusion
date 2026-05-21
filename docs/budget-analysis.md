@@ -150,7 +150,7 @@ Paid run; instance destroyed after local pullback.
 | Approx compute spend | about `$3.78` |
 | Realtime result | `24.868 fps` over a 90s WebRTC receive run |
 | First frame latency | `1.507s` in 90s run, `0.579s` in recorded 30s run |
-| Local output | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4` |
+| Local output | media pruned after QA; telemetry retained in `docs/video-scope-longlive-observations.md` |
 
 Cost interpretation:
 
@@ -169,7 +169,7 @@ Paid run; instance destroyed after local pullback.
 | Observed total rate after launch | `$0.8685185185185185/h` |
 | Realtime result | `11.310 fps` over a 30s WebRTC receive run |
 | First frame latency | `2.480s` |
-| Local output | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4` |
+| Local output | media pruned after QA; telemetry retained in `docs/video-scope-longlive-observations.md` |
 
 Cost/performance interpretation:
 

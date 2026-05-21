@@ -98,12 +98,12 @@ Teardown and spend:
 
 Results:
 
-| Resolution | Pixels | Pass | FPS | First frame | Frames | Local video |
+| Resolution | Pixels | Pass | FPS | First frame | Frames | Media |
 | --- | ---: | --- | ---: | ---: | ---: | --- |
-| `320x576` | `184,320` | yes | `25.768` | `1.384s` | `748` | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/scope_longlive_vast_smoke_20260520T211512Z_320x576_webrtc_capture.mp4` |
-| `336x592` | `198,912` | yes | `24.757` | `0.856s` | `730` | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/scope_longlive_vast_smoke_20260520T211512Z_336x592_webrtc_capture.mp4` |
-| `352x576` | `202,752` | yes | `24.835` | `0.721s` | `736` | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/scope_longlive_vast_smoke_20260520T211512Z_352x576_webrtc_capture.mp4` |
-| `368x640` | `235,520` | no | `22.175` | `0.749s` | `660` | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/scope_longlive_vast_smoke_20260520T211512Z_368x640_webrtc_capture.mp4` |
+| `320x576` | `184,320` | yes | `25.768` | `1.384s` | `748` | pruned after QA |
+| `336x592` | `198,912` | yes | `24.757` | `0.856s` | `730` | pruned after QA |
+| `352x576` | `202,752` | yes | `24.835` | `0.721s` | `736` | pruned after QA |
+| `368x640` | `235,520` | no | `22.175` | `0.749s` | `660` | pruned after QA |
 
 Key phase telemetry:
 
@@ -124,7 +124,7 @@ Key phase telemetry:
 
 Visual inspection:
 
-1. `contact_sheet.jpg` for `352x576` and `368x640` showed coherent red/blue neon hexagonal tunnel geometry;
+1. contact sheets for `352x576` and `368x640` showed coherent red/blue neon hexagonal tunnel geometry during QA, then were pruned as disposable media;
 2. all four `artifact_qa.json` files reported `nonblank_ok: true`;
 3. the `368x640` failure is throughput only, not a generation/load failure.
 
@@ -175,12 +175,12 @@ Teardown and balance:
 
 Results:
 
-| Attempt | GPU | Resolution | Pass | FPS | First frame | Frames | Invoice cost | Local video |
+| Attempt | GPU | Resolution | Pass | FPS | First frame | Frames | Invoice cost | Media |
 | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| 1 | `H200` | `320x576` | yes | `25.376` | `1.338s` | `737` | `$1.681` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_01_hopper_320x576_webrtc_capture.mp4` |
-| 2 | `H200` | `368x640` | no | `20.835` | `1.506s` | `600` | `$0.890` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_02_hopper_368x640_webrtc_capture.mp4` |
-| 3 | `H200` | `480x832` | no | `12.171` | `1.793s` | `348` | `$0.624` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_03_hopper_480x832_webrtc_capture.mp4` |
-| 4 | `RTX 4090` | `256x448` | no | `12.912` | `4.693s` | `333` | `$0.907` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_04_rtx4090_lowres_256x448_webrtc_capture.mp4` |
+| 1 | `H200` | `320x576` | yes | `25.376` | `1.338s` | `737` | `$1.681` | pruned after QA |
+| 2 | `H200` | `368x640` | no | `20.835` | `1.506s` | `600` | `$0.890` | pruned after QA |
+| 3 | `H200` | `480x832` | no | `12.171` | `1.793s` | `348` | `$0.624` | pruned after QA |
+| 4 | `RTX 4090` | `256x448` | no | `12.912` | `4.693s` | `333` | `$0.907` | pruned after QA |
 
 Telemetry:
 
@@ -193,7 +193,7 @@ Telemetry:
 
 Visual inspection:
 
-1. sampled `frame_000024.png` from all four attempts;
+1. sampled `frame_000024.png` from all four attempts during QA, then pruned the sampled frames;
 2. all samples showed coherent red/blue neon tunnel geometry;
 3. the failures were throughput/latency failures, not blank output or obvious model-load corruption.
 
@@ -336,15 +336,11 @@ Local artifacts:
 
 ```text
 /Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/run_report.json
-/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/webrtc_capture.mp4
-/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/frames/frame_000024.png
-/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4
-/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/scope_longlive_vast_smoke_20260520T190833Z_frame_000024.png
 ```
 
 Visual inspection:
 
-1. opened `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/frames/frame_000024.png`;
+1. opened the sampled frame during QA;
 2. frame showed coherent red/blue hexagonal neon tunnel geometry;
 3. output quality was valid, but throughput was not realtime.
 
@@ -537,7 +533,7 @@ Offline one-chunk smoke:
 | Pipeline load inside standalone process | `19.864s` |
 | First chunk latency | `1.176s` |
 | Chunk throughput | `7.651 fps` |
-| Output video | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_offline_longlive_smoke.mp4` |
+| Output video | pruned after QA |
 
 Realtime WebRTC + synthetic EEG validation:
 
@@ -553,7 +549,7 @@ Recorded video:
 
 | Field | Value |
 | --- | --- |
-| Local MP4 | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4` |
+| Local MP4 | pruned after QA |
 | Duration | `30.959s` |
 | Frames | `743` |
 | Resolution | `576x320` |
@@ -563,7 +559,7 @@ Recorded video:
 Visual inspection:
 
 1. pulled sampled frames to local `VideoDiffusion/.tmp/scope_b200_20260515T194707Z_remote/`;
-2. copied representative frame to `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_frame_000180.png`;
+2. copied a representative frame for QA, then pruned it as disposable media;
 3. opened frames `000030`, `000180`, and `000360`;
 4. frames were coherent neon tunnel geometry with visible color/shape changes and no blank/noisy/static collapse.
 
@@ -596,12 +592,11 @@ Pulled local run bundle:
 VideoDiffusion/.tmp/scope_b200_20260515T194707Z_remote/
 ```
 
-User-facing artifacts:
+Media retention:
 
 ```text
-/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4
-/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_frame_000180.png
-/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_offline_longlive_smoke.mp4
+Bulky B200 MP4/PNG media was pruned after QA.
+The retained evidence is this observations record plus the R2 tuple metadata and remote/local telemetry summaries above.
 ```
 
 Key logs:

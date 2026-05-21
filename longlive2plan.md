@@ -104,8 +104,8 @@ Last no-spend check: 2026-05-21.
 
 ```text
 active Vast instances: []
-Vast credit: $0.639956
-last observed viable LongLive2 Hopper offer: H200 x2 at about $7.743/hour
+Vast credit: $20.639956
+latest viable LongLive2 Hopper offer: H200 x2 offer `28747631` at `$7.896080928126769/hour`
 ```
 
 Approximate H200 x2 compute cost:
@@ -121,10 +121,11 @@ Approximate H200 x2 compute cost:
 
 Budget conclusion:
 
-1. Current credit is no longer enough for another H200 x2 restore validation.
-2. A fresh H200 x2 restore/render validation should be budgeted around `$2.50-$3.00` for a tightly capped `18-20 min` run.
-3. A `sp1` vs `sp2` comparison or any Blackwell NVFP4 follow-up needs additional credit.
-4. Do not launch another paid LongLive2 instance until credit is topped up or the user explicitly approves a smaller-risk spend plan.
+1. Current credit is enough for the planned H200 x2 restore validation.
+2. The latest preflight selected H200 x2 offer `28747631` at `$7.896080928126769/h`.
+3. The planned `20 min` restore-validation window estimates `$2.632027` spend and requires `$2.832027` including the `$0.20` reserve.
+4. A same-instance `sp1` vs `sp2` comparison should be decided after the restore validation result.
+5. Blackwell NVFP4 follow-up still needs separate approval because it is a different hardware/runtime lane.
 
 ## Current Readiness
 
@@ -162,7 +163,7 @@ Not ready / not yet proven:
 5. No LongLive2 WebRTC/live-display path exists yet.
 
 This means the first paid milestone is complete for cold BF16 SP render and tuple publication, but the next milestone is fresh restore validation.
-The first restore validation proved R2 fetch/extract timing, then exposed a missing Wan symlink in the restore path; the code now patches that boundary, but the fixed path has not been rerun because the remaining Vast credit is too low for another safe H200 x2 validation.
+The first restore validation proved R2 fetch/extract timing, then exposed a missing Wan symlink in the restore path; the code now patches that boundary, and the current top-up plus preflight make the fixed restore path ready to run after explicit paid-launch approval.
 
 ## Detailed Plan From Current State
 
@@ -173,7 +174,7 @@ This is the ordered plan from what we have learned so far.
 Purpose: avoid losing work or spending while the budget is below the paid threshold.
 
 1. Keep `main` as the working branch, but do not pull/rebase/push blindly while it is ahead/behind `origin/main`.
-2. Run only no-spend checks until Vast credit is at least the restore-validation threshold.
+2. Run only no-spend checks until Vast credit is at least the restore-validation threshold; this is now satisfied for the H200 x2 restore-validation plan.
 3. Keep local artifacts in `artifacts/`, not `Downloads`.
 4. Keep telemetry and reports; prune historical media after QA with `python3 scripts/prune_artifacts.py --delete`.
 5. Before any paid run, confirm `vastai show instances --raw` returns `[]`.
@@ -303,6 +304,7 @@ and account identifiers out of this file.
 | 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.895` over `416s`; planned `$5.807` for `45 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T232208Z/` | `transformers` and `decord` guards passed; SP initialized with `sp_sizes=[2]`; failed because Wan2.2 base assets were not downloaded/linked; artifact pullback and teardown succeeded; active instances verified `[]`; current credit about `$6.126` |
 | 2026-05-21 | paid BF16 SP smoke + R2 publish | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$3.170` over `1474s`; planned `$5.807` for `45 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/` | cold setup/download/render succeeded; MP4 is `832x480`, `125` frames, `24 fps`, `5.208s`; SP used both H200s with max `36341 MiB` each; R2 publish succeeded with `3.977 GB` env archive, `44.203 GB` weights archive, and flash-attn wheel; local artifact pullback and teardown succeeded; active instances verified `[]`; current credit after charges about `$2.918` |
 | 2026-05-21 | paid BF16 SP restore validation | fail after restore | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$1.682` over `782s`; planned `$2.323` for `18 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T235723Z/` | R2 tuple restore succeeded in `559s`, then `torchrun` failed because restored weights did not recreate the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` link; patched `restore_r2_prebuild_model.sh` to recreate and require that link; artifact pullback and teardown succeeded; active instances verified `[]`; current credit about `$0.64` |
+| 2026-05-21 | wrapper preflight | pass | H200 x2 offer `28747631` at `$7.896080928126769/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | planned `$2.632027` for `20 min`; required `$2.832027` with reserve | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260521T110443Z/` | credit `$20.639956`, active instances `[]`, `bash scripts/check.sh` passed, `git diff --check` passed, offline dry-run passed, NVFP4-on-SM90 guard passed, no paid instance created |
 
 ## What Changed
 
@@ -319,6 +321,7 @@ Use this section for short operator notes that explain why the plan changed.
 - 2026-05-21: First fresh restore validation restored the R2 tuple in `559s`, then failed because tuple extraction did not recreate LongLive2's vendor-local Wan symlink. Patched `VideoDiffusion/restore_r2_prebuild_model.sh` so future restores link `VideoDiffusion/.cache/longlive2/wan_models/Wan2.2-TI2V-5B` into `VideoDiffusion/.vendors/LongLive2/wan_models/Wan2.2-TI2V-5B`.
 - 2026-05-21: Pruned disposable historical Scope/LongLive MP4/PNG/JPG media after QA, reducing local `artifacts/` from `171M` to `3.1M`. Added `scripts/prune_artifacts.py` and updated docs so telemetry/reports/manifests are the durable evidence while media is retained only as explicit proof clips or deliverables.
 - 2026-05-21: Expanded the next-step plan into ordered no-spend, restore-validation, `sp1`/`sp2` benchmark, Scope fallback, Blackwell, and later live-runner phases.
+- 2026-05-21: User topped up Vast credit to `$20.639956`. The restore-validation preflight selected H200 x2 offer `28747631`, estimated `$2.632027` for the `20 min` cap, required `$2.832027` with reserve, and passed all no-spend gates. The repo is ready for the paid restore-only validation after explicit launch approval.
 
 ## Step-By-Step Checklist
 

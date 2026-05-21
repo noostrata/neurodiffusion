@@ -244,15 +244,28 @@ Restore validation details:
 
 1. The first fresh restore fetched/extracted the tuple in `559s`, so R2 restore already removes the dependency build and HF download steps.
 2. The render then failed because tuple restore had not recreated the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` symlink.
-3. The restore script now recreates that symlink, but the fixed path has not been rerun because remaining Vast credit is `$0.639956`.
+3. The restore script now recreates that symlink, and the fixed path is ready to rerun after the user topped up Vast credit to `$20.639956`.
 
 Budget implication:
 
-1. Another H200 x2 restore validation needs roughly `$2.50-$3.00` available for an `18-20 min` capped run.
+1. Another H200 x2 restore validation needs roughly `$2.50-$3.00` available for an `18-20 min` capped run; the latest preflight estimated `$2.632027` for `20 min` and required `$2.832027` including reserve.
 2. A same-instance `sp1` vs `sp2` comparison should be budgeted separately after restore validation.
 3. Blackwell NVFP4 work should not start until more credit is available; it has a different tuple family and likely a higher hourly rate.
 4. Current paid order is restore validation first, SP benchmark second, persistent-runner design third, Blackwell/NVFP4 later.
 5. Local storage is no longer a budget concern for historical media: `artifacts/` was pruned to about `3.1M`, with telemetry retained and disposable MP4/PNG/JPG media deleted after QA.
+
+Latest no-spend readiness check:
+
+| Field | Value |
+| --- | ---: |
+| Vast credit | `$20.639956` |
+| Active instances | `0` |
+| Selected restore-validation offer | `H200 x2` offer `28747631` |
+| Advertised rate | `$7.896080928126769/h` |
+| Planned cap | `20 min` |
+| Estimated spend | `$2.632027` |
+| Required credit with reserve | `$2.832027` |
+| Result | ready for paid restore-only validation after explicit launch approval |
 
 | Instance | GPU | Resolution | Invoice cost | Notes |
 | ---: | --- | --- | ---: | --- |

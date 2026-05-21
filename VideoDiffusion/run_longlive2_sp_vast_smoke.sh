@@ -1038,6 +1038,9 @@ remote_run_smoke() {
   if [[ "${LONGLIVE2_PROFILE}" == nvfp4* ]]; then
     run_args+=(--strict-profile-gpu-match)
   fi
+  if [[ "${PUBLISH_R2_ON_SUCCESS}" == "1" ]]; then
+    run_args+=(--no-fail-on-report-reject)
+  fi
   if [[ -n "${LONGLIVE2_SCHEDULE_CSV}" ]]; then
     run_args+=(--schedule-csv "${LONGLIVE2_SCHEDULE_CSV}")
   fi
@@ -1055,6 +1058,47 @@ remote_run_smoke() {
     done
   fi
   remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/run_longlive2_sp_offline.sh $(printf '%q ' "${run_args[@]}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/run_longlive2_sp_offline.wrapper.log")"
+}
+
+remote_check_smoke_report() {
+  local mode="$1"
+  remote_ssh_guarded "python3 - $(q "${mode}") $(q "${REMOTE_RUN_DIR}/offline/run_report.json") <<'PY'
+import json
+import sys
+from pathlib import Path
+
+mode, report_path = sys.argv[1:]
+path = Path(report_path)
+if not path.is_file():
+    print(f'[error] LongLive2 run report missing: {path}', file=sys.stderr)
+    raise SystemExit(1)
+payload = json.loads(path.read_text(encoding='utf-8'))
+acceptance = payload.get('acceptance') or {}
+if mode == 'publish_eligible':
+    required = (
+        'video_exists_ok',
+        'torchrun_errors_ok',
+        'sp_marker_present',
+        'telemetry_present',
+        'artifact_nonblank_ok',
+    )
+    failed = [key for key in required if not acceptance.get(key)]
+    if failed:
+        print(f'[error] LongLive2 render is not eligible for R2 publish; failed={failed}', file=sys.stderr)
+        raise SystemExit(1)
+    print('[longlive2-vast] render is eligible for R2 publish')
+    raise SystemExit(0)
+if mode == 'full_acceptance':
+    if not acceptance.get('passed'):
+        failed = [key for key, value in acceptance.items() if key.endswith('_ok') and not value]
+        print(f'[error] LongLive2 run did not meet full acceptance; failed={failed}', file=sys.stderr)
+        raise SystemExit(1)
+    print('[longlive2-vast] full LongLive2 acceptance passed')
+    raise SystemExit(0)
+print(f'[error] unknown report check mode: {mode}', file=sys.stderr)
+raise SystemExit(1)
+PY
+"
 }
 
 remote_run_benchmark() {
@@ -1138,6 +1182,9 @@ PY
   )
   if [[ -n "${LONGLIVE2_SAMPLING_STEPS}" ]]; then
     preflight_offline_args+=(--sampling-steps "${LONGLIVE2_SAMPLING_STEPS}")
+  fi
+  if [[ "${PUBLISH_R2_ON_SUCCESS}" == "1" ]]; then
+    preflight_offline_args+=(--no-fail-on-report-reject)
   fi
   bash "${SCRIPT_DIR}/run_longlive2_sp_offline.sh" "${preflight_offline_args[@]}"
   if [[ "${RUN_BENCHMARK}" == "1" ]]; then
@@ -1269,9 +1316,19 @@ if [[ "${RUN_BENCHMARK}" == "1" ]]; then
   mark_phase "longlive2_benchmark_done"
 fi
 if [[ "${PUBLISH_R2_ON_SUCCESS}" == "1" ]]; then
+  if [[ "${RUN_SMOKE}" == "1" ]]; then
+    mark_phase "publish_eligibility_check_start"
+    remote_check_smoke_report "publish_eligible"
+    mark_phase "publish_eligibility_check_done"
+  fi
   mark_phase "publish_r2_start"
   remote_publish_r2_tuple
   mark_phase "publish_r2_done"
+fi
+if [[ "${RUN_SMOKE}" == "1" && "${PUBLISH_R2_ON_SUCCESS}" == "1" ]]; then
+  mark_phase "realtime_acceptance_check_start"
+  remote_check_smoke_report "full_acceptance"
+  mark_phase "realtime_acceptance_check_done"
 fi
 mark_phase "artifact_pull_start"
 pull_artifacts

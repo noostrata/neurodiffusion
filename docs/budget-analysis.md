@@ -283,6 +283,7 @@ Budget implication:
 2. Use `--max-estimated-spend-usd 3.00` and a `90 min` cap for the cold build/download/render/publish path; the latest preflight planned `$1.402778`.
 3. Use a one-GPU B200/GB200 only if a sane one-GPU offer appears; do not rent B200/GB200 x8 for this experiment.
 4. Judge success with wall-clock render FPS from `run_timing.json`, not MP4 playback FPS; the Blackwell wrapper now sets `--min-wall-fps 24` so slow renders fail `run_report.json` acceptance.
+5. A valid but slow first cold build may still publish the R2 tuple before failing the realtime verdict, avoiding a second paid build/download cycle just to test lower resolutions.
 
 Latest no-spend readiness check:
 

@@ -433,7 +433,7 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --max-estimated-spend-usd 3.00
 ```
 
-This uses RTX 5090 x1 / SM120, not B200/GB200. Use SM100 only for a one-GPU B200/GB200 listing; do not rent an x8 B200/GB200 host for the LongLive2 Blackwell smoke. `--blackwell-tier sm120` also sets a `24 fps` wall-clock acceptance threshold in the report.
+This uses RTX 5090 x1 / SM120, not B200/GB200. Use SM100 only for a one-GPU B200/GB200 listing; do not rent an x8 B200/GB200 host for the LongLive2 Blackwell smoke. `--blackwell-tier sm120` also sets a `24 fps` wall-clock acceptance threshold in the report. If the first cold build renders a valid nonblank video but misses the FPS gate, the wrapper can still publish the R2 tuple and then exit failed for the realtime verdict.
 
 ## Persistence
 

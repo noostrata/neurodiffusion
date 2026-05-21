@@ -405,7 +405,7 @@ Tuple tag families:
 - `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1`
 - `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1`
 
-The next planned LongLive2 publish target is the SM120 RTX 5090 tuple. It should only be published after a successful `nvfp4_s2` render with local artifact pullback, and it should only become `validated_restore_tuple` after a separate fresh restore render.
+The next planned LongLive2 publish target is the SM120 RTX 5090 tuple. It should only be published after a successful `nvfp4_s2` render with local artifact pullback, and it should only become `validated_restore_tuple` after a separate fresh restore render. Publish eligibility is stricter than process success but separate from realtime speed: a valid nonblank render with telemetry can publish the cold-build tuple even if `wall_fps_ok` is false, so the expensive build is cached without claiming realtime performance.
 
 R2 keys:
 

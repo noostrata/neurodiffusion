@@ -210,12 +210,14 @@ Implemented files:
    - writes config, launch plan, torchrun log, GPU telemetry, report JSON, artifact QA, and contact sheet;
    - writes `run_timing.json` with wall-clock render FPS so realtime claims use generation speed rather than MP4 playback FPS;
    - accepts `--min-wall-fps` and uses it in `run_report.json` acceptance;
+   - can exit successfully after inference while preserving a failed report through `--no-fail-on-report-reject`, used only when the Vast wrapper must publish useful cold-build caches before failing the realtime verdict;
    - accepts `--seed` so `sp1` and `sp2` comparisons can hold the seed fixed.
 5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh`
    - provisions a Vast host only when `--create-instance` is passed;
    - defaults to Hopper two-GPU SP, but `--blackwell-tier sm120` switches to RTX 5090 x1 `nvfp4_s2`;
    - Blackwell tier mode sets `--min-wall-fps 24` and strict NVFP4 GPU matching for the remote render;
    - `--blackwell-cold-build` skips R2 restore and publishes a new NVFP4 tuple after a successful render;
+   - for R2 publishing, checks render validity separately from realtime speed so a valid-but-slow cold build can still cache the expensive env/model tuple before the wrapper exits failed;
    - supports `--preflight` for no-spend local checks, dry-run, offer selection, active-instance check, credit check, and budget gate;
    - writes sanitized selected-offer, credit, budget, phase-marker, and phase-report artifacts;
    - enforces `--max-alive-min` around paid remote SSH phases;
@@ -237,6 +239,7 @@ Implemented files:
    - reads `ffprobe` metadata when output exists;
    - generates contact sheet and nonblank artifact QA when possible;
    - includes `run_timing.json` in `run_report.json`;
+   - treats artifact-QA sampling errors as failed nonblank validation when video output is required;
    - parses wrapper phase markers into phase/cost reports.
 8. R2 dispatch updates:
    - `--model longlive2` is supported in `VideoDiffusion/publish_r2_prebuild_model.sh`;
@@ -434,6 +437,7 @@ Acceptance:
 4. output quality is not obviously degraded relative to BF16/4-step for the same prompt.
 5. throughput is high enough to justify the higher setup complexity.
 6. wall-clock render FPS from `run_timing.json` is `>=24` before calling it realtime; MP4 playback FPS alone does not count. In Blackwell tier mode this is enforced in `run_report.json` through `wall_fps_ok`.
+7. a valid but slow Blackwell cold build may still publish the R2 tuple, but the wrapper exits failed after publishing so the cache exists without promoting the run as realtime.
 
 ## Live EEG Integration Plan
 

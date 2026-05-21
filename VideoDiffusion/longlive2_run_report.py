@@ -344,9 +344,7 @@ def write_report(args: argparse.Namespace) -> int:
         "torchrun_errors_ok": not bool(log.get("errors")),
         "sp_marker_present": bool(log.get("sp_markers")) or int(launch_plan.get("nproc_per_node") or 1) <= 1,
         "telemetry_present": bool(gpu_telemetry.get("samples")) or args.allow_missing_telemetry,
-        "artifact_nonblank_ok": bool(artifact_qa.get("nonblank_ok")) or args.allow_missing_video or bool(
-            artifact_qa.get("luma_samples", {}).get("error")
-        ),
+        "artifact_nonblank_ok": bool(artifact_qa.get("nonblank_ok")) or args.allow_missing_video,
         "wall_fps_ok": args.min_wall_fps <= 0
         or (_float_or_none(run_timing.get("wall_render_fps")) or 0.0) >= args.min_wall_fps,
     }
@@ -473,6 +471,37 @@ def command_selftest() -> int:
         assert write_report(args) == 1
         report = load_json(run_dir / "run_report.json")
         assert not report["acceptance"]["wall_fps_ok"]
+        bad_run_dir = root / "bad_run"
+        bad_run_dir.mkdir()
+        fake_video = bad_run_dir / "videos" / "fake.mp4"
+        fake_video.parent.mkdir()
+        fake_video.write_bytes(b"not a real mp4")
+        (bad_run_dir / "launch_plan.json").write_text(
+            json.dumps({"run_id": "bad", "nproc_per_node": 1, "entrypoint": "inference.py"}) + "\n",
+            encoding="utf-8",
+        )
+        (bad_run_dir / "torchrun.log").write_text(f"Saved: {fake_video}\n", encoding="utf-8")
+        (bad_run_dir / "gpu_telemetry.csv").write_text(
+            "timestamp,index,name,utilization.gpu [%],memory.used [MiB],memory.total [MiB]\n"
+            "2026-05-21 00:00:00,0,RTX 5090,91 %,12000 MiB,32000 MiB\n",
+            encoding="utf-8",
+        )
+        (bad_run_dir / "run_timing.json").write_text(
+            json.dumps({"frames": 32, "wall_elapsed_s": 1.0, "wall_render_fps": 32.0, "exit_code": 0}) + "\n",
+            encoding="utf-8",
+        )
+        bad_args = argparse.Namespace(
+            run_dir=str(bad_run_dir),
+            config="",
+            report_path="",
+            qa_sample_count=3,
+            allow_missing_video=False,
+            allow_missing_telemetry=False,
+            min_wall_fps=0.0,
+        )
+        assert write_report(bad_args) == 1
+        bad_report = load_json(bad_run_dir / "run_report.json")
+        assert not bad_report["acceptance"]["artifact_nonblank_ok"]
         phase_log = run_dir / "phase_markers.log"
         phase_log.write_text(
             "[longlive2-vast-ts] 2026-05-21T00:00:00Z setup_start\n"

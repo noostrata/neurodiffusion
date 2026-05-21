@@ -41,6 +41,7 @@ LONGLIVE2_DRY_RUN="${LONGLIVE2_DRY_RUN:-0}"
 LONGLIVE2_SKIP_CONFIG_GENERATION="${LONGLIVE2_SKIP_CONFIG_GENERATION:-0}"
 LONGLIVE2_STRICT_PROFILE_GPU_MATCH="${LONGLIVE2_STRICT_PROFILE_GPU_MATCH:-0}"
 LONGLIVE2_MIN_WALL_FPS="${LONGLIVE2_MIN_WALL_FPS:-0}"
+LONGLIVE2_FAIL_ON_REPORT_REJECT="${LONGLIVE2_FAIL_ON_REPORT_REJECT:-1}"
 
 usage() {
   cat <<EOF
@@ -70,6 +71,7 @@ Options:
   --cuda-visible-devices <csv>  CUDA_VISIBLE_DEVICES override
   --strict-profile-gpu-match    Fail when NVFP4 profile is used on non-Blackwell GPU names
   --min-wall-fps <fps>          Minimum wall-clock render FPS for run_report acceptance
+  --no-fail-on-report-reject    Exit 0 after a successful inference even if run_report acceptance fails
   --dry-run                     Print plan without launching torchrun
 EOF
 }
@@ -170,6 +172,10 @@ while [[ $# -gt 0 ]]; do
     --min-wall-fps)
       LONGLIVE2_MIN_WALL_FPS="$2"
       shift 2
+      ;;
+    --no-fail-on-report-reject)
+      LONGLIVE2_FAIL_ON_REPORT_REJECT="0"
+      shift
       ;;
     --dry-run)
       LONGLIVE2_DRY_RUN="1"
@@ -332,13 +338,13 @@ if [[ "${LONGLIVE2_PROFILE}" == nvfp4* && "${GPU_NAMES}" != *"B200"* && "${GPU_N
   echo "[warn] ${message}" >&2
 fi
 
-python3 - "${PLAN_JSON}" "${LONGLIVE2_RUN_ID}" "${LONGLIVE2_SRC_DIR}" "${LONGLIVE2_CONFIG_PATH}" "${ENTRYPOINT}" "${NPROC}" "${LONGLIVE2_CUDA_VISIBLE_DEVICES}" "${LONGLIVE2_PROFILE}" "${GPU_NAMES}" "${LONGLIVE2_GENERATOR_CKPT}" "${LONGLIVE2_LORA_CKPT}" "${LONGLIVE2_SEED}" "${LONGLIVE2_MIN_WALL_FPS}" <<'PY'
+python3 - "${PLAN_JSON}" "${LONGLIVE2_RUN_ID}" "${LONGLIVE2_SRC_DIR}" "${LONGLIVE2_CONFIG_PATH}" "${ENTRYPOINT}" "${NPROC}" "${LONGLIVE2_CUDA_VISIBLE_DEVICES}" "${LONGLIVE2_PROFILE}" "${GPU_NAMES}" "${LONGLIVE2_GENERATOR_CKPT}" "${LONGLIVE2_LORA_CKPT}" "${LONGLIVE2_SEED}" "${LONGLIVE2_MIN_WALL_FPS}" "${LONGLIVE2_FAIL_ON_REPORT_REJECT}" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-out, run_id, src_dir, config_path, entrypoint, nproc, devices, profile, gpu_names, generator_ckpt, lora_ckpt, seed, min_wall_fps = sys.argv[1:]
+out, run_id, src_dir, config_path, entrypoint, nproc, devices, profile, gpu_names, generator_ckpt, lora_ckpt, seed, min_wall_fps, fail_on_report_reject = sys.argv[1:]
 payload = {
     "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     "run_id": run_id,
@@ -353,6 +359,7 @@ payload = {
     "lora_ckpt": lora_ckpt,
     "seed": int(seed),
     "min_wall_fps": float(min_wall_fps),
+    "fail_on_report_reject": fail_on_report_reject == "1",
 }
 Path(out).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 PY
@@ -440,4 +447,7 @@ python3 "${SCRIPT_DIR}/longlive2_run_report.py" report \
 if [[ "${run_rc}" -ne 0 ]]; then
   exit "${run_rc}"
 fi
-exit "${report_rc}"
+if [[ "${report_rc}" -ne 0 && "${LONGLIVE2_FAIL_ON_REPORT_REJECT}" == "1" ]]; then
+  exit "${report_rc}"
+fi
+exit 0

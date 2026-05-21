@@ -136,6 +136,7 @@ Current LongLive2 acceleration order:
 2. Stop treating Hopper BF16 SP as a live path because same-seed `sp_size=2` was slower than `sp_size=1`.
 3. Test the one-GPU RTX 5090 / SM120 `nvfp4_s2` lane before any B200/GB200 spend above one GPU.
 4. Keep Scope/LongLive as the realtime EEG path until a Blackwell LongLive2 run proves `>=24` wall-clock render FPS; the Blackwell wrapper sets the same `24 fps` threshold in `run_report.json` acceptance.
+5. For first Blackwell cold builds, cache eligibility and realtime acceptance are separate: a valid nonblank render can publish the R2 tuple even if the wrapper later exits failed because `wall_fps_ok` is false.
 
 Latest H200 x2 BF16 SP result:
 

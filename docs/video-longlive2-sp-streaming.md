@@ -7,7 +7,8 @@ The objective is one live video stream whose generation state is split across tw
 
 ## Status
 
-Current status: local plumbing implemented and no-cost validated; no paid LongLive2 GPU run has been launched from this repo yet.
+Current status: local plumbing implemented, no-cost validated, and cold H200 x2 BF16 SP render validated.
+The BF16 SP tuple is published to R2, but the fresh restore path still needs one paid rerun after the Wan-link restore patch.
 
 LongLive2 is a separate experimental lane from Daydream Scope + LongLive:
 
@@ -187,10 +188,15 @@ Implemented files:
    - pin `LONGLIVE2_REPO_REF` by commit, defaulting to the researched commit until deliberately refreshed;
    - creates an ignored runtime env file under `VideoDiffusion/.longlive2_runtime.env`;
    - supports `--skip-build` for cheap clone/config steps;
-   - supports BF16 and NVFP4 profile setup, including FourOverSix and pinned flash-attention source build for NVFP4.
+   - supports BF16 and NVFP4 profile setup, including FourOverSix and pinned flash-attention source build for NVFP4;
+   - pins `transformers==4.57.3` by default and verifies the `x_clip_loss` import that upstream LongLive2 expects;
+   - installs `decord` as an extra dependency until upstream requirements include it.
 2. `VideoDiffusion/download_longlive2_models.sh`
    - downloads BF16, NVFP4 S4, or NVFP4 S2 checkpoints into ignored cache paths;
-   - optionally downloads Wan2.2-TI2V-5B base assets;
+   - downloads Wan2.2-TI2V-5B base assets by default because upstream loads them from `wan_models/Wan2.2-TI2V-5B`;
+   - links the cached Wan tree into the upstream relative path expected by `inference_sp.py`;
+   - uses `hf download` or `huggingface-cli download` when available;
+   - falls back to `huggingface_hub.snapshot_download` through the LongLive2 venv when no CLI binary exists;
    - writes a sanitized model manifest without tokens, hostnames, or secret env.
 3. `VideoDiffusion/longlive2_config.py`
    - generates patched inference configs;
@@ -212,6 +218,7 @@ Implemented files:
    - restores R2 tuple when available;
    - build/download fallback only when explicitly allowed;
    - runs one short SP inference;
+   - can publish the env/cache tuple before teardown with `--publish-r2-on-success` after a successful render;
    - pulls local MP4, logs, config, phase telemetry, and GPU telemetry;
    - tears down by default.
 6. `VideoDiffusion/run_longlive2_sp_benchmark.sh`
@@ -228,7 +235,7 @@ Implemented files:
    - `--model longlive2` is supported in `VideoDiffusion/publish_r2_prebuild_model.sh`;
    - `--model longlive2` is supported in `VideoDiffusion/restore_r2_prebuild_model.sh`;
    - default tuple tiers are `longlive2-bf16-sp-hopper,longlive2-nvfp4-blackwell`.
-8. Vast selector updates:
+9. Vast selector updates:
    - `scripts/vast/query_video_offers.py --model longlive2` targets two-GPU datacenter CUDA 12.8 hosts;
    - `scripts/vast/select_video_offer.py` handles `sm90`, `sm100`, and `sm120` runtime tags;
    - SP smoke defaults to two GPUs and logs GPU names plus telemetry.
@@ -277,6 +284,37 @@ neurodiffusion/benchmarks/longlive2_sp/
 
 Publish only after a paid host proves that the environment imports, the extensions load, and a minimal render completes.
 
+## Empirical Status
+
+Current paid evidence:
+
+1. `2026-05-21` H200 x2 paid bring-up used offer `28957790` at about `$7.743/h`.
+2. Early attempts found and fixed three cold-start blockers: missing HF CLI fallback, `transformers==5.9.0` missing the upstream `x_clip_loss` import, and missing `decord`.
+3. A fourth attempt proved Ulysses SP initialization with `sp_sizes=[2]`, then failed because Wan2.2 base assets were not downloaded/linked.
+4. The fifth attempt, `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/`, succeeded end-to-end on the cold build/download path.
+5. That successful run wrote `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/offline/videos/rank0-0-0_regular_sp2.mp4`.
+6. `ffprobe` confirmed H.264, `832x480`, `125` frames, `24 fps`, and `5.208s`.
+7. Artifact QA reported nonblank luma samples and a contact sheet at `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/offline/qa/contact_sheet.jpg`.
+8. GPU telemetry showed both H200s active with max `36341 MiB` used on each card and `100%` max utilization.
+9. Phase telemetry: total wrapper elapsed `1474s`, cold restore/download/build phase `235s`, render phase `125s`, R2 publish phase `972s`, artifact pullback `28s`, teardown `3s`.
+10. The estimated compute spend for that run was about `$3.170`.
+11. The run published `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` to R2 before teardown.
+12. Published R2 objects were verified after upload:
+    - env archive: `neurodiffusion/env-cache/longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1/venv_longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1.tar.zst`, `3,977,262,169` bytes;
+    - weights archive: `neurodiffusion/weights/longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1/weights_longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1.tar`, `44,203,243,520` bytes;
+    - wheelhouse includes `flash_attn-2.8.3-cp311-cp311-linux_x86_64.whl`, `256,043,372` bytes.
+13. A fresh restore validation, `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T235723Z/`, restored the R2 tuple in `559s` but failed at `torchrun` because the restore path did not recreate the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` symlink.
+14. The repo now patches that restore-boundary failure in `VideoDiffusion/restore_r2_prebuild_model.sh`, which recreates and checks the Wan runtime link after tuple extraction.
+
+Current state:
+
+1. active Vast instances: `0`;
+2. current Vast credit after the restore-validation attempt: about `$0.64`;
+3. current H200 x2 offers in the refreshed scan start at about `$7.743/h`;
+4. a LongLive2 MP4 and a published BF16 SP R2 tuple exist;
+5. the R2 tuple is `published_tuple`, not yet `validated_restore_tuple`, because the fixed Wan-link restore path still needs a fresh paid rerun;
+6. no `sp1` vs `sp2` speedup result exists yet.
+
 ## Test Plan
 
 ### No-Cost Local Tests
@@ -299,7 +337,7 @@ Goal: prove one stream uses two ranks.
 Constraints:
 
 1. `--min-gpu-count 2 --max-gpu-count 2`.
-2. `--max-alive-min` around `45` for first smoke.
+2. `--max-alive-min` around `45` for render-only first smoke, or around `60` when `--publish-r2-on-success` is also requested.
 3. `--destroy-on-exit` default true.
 4. use explicit modest geometry first: `480x832`, `32` frames.
 5. pull local output before teardown, including failure logs when render fails.
@@ -390,11 +428,11 @@ The offline `torchrun` smoke is only the proof that the model/runtime is viable.
 
 ## Performance Strategy
 
-Default order:
+Default order from here:
 
-1. prove BF16 SP works on a two-GPU Hopper host;
-2. publish the BF16 SP tuple to R2 only after a successful render;
-3. validate that BF16 SP tuple with a fresh restore run;
+1. validate the patched BF16 SP tuple restore on a fresh two-GPU Hopper host;
+2. measure restore-phase time and compare it to the cold build/download path;
+3. if restore validation passes, treat `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` as the default Hopper fast path;
 4. test one-GPU vs two-GPU speedup with `VideoDiffusion/run_longlive2_sp_benchmark.sh`;
 5. test NVFP4 S2 on SM100;
 6. publish and then separately validate the NVFP4 S2 tuple;
@@ -415,7 +453,8 @@ Cost knobs:
 3. stop immediately after a failed import/build unless the error is clearly fixable within the current budget;
 4. publish successful env/model tuples before terminating the builder instance when the render proves the env is reusable;
 5. never keep an instance alive just to preserve a loaded model unless the user explicitly asks.
-6. keep first-smoke geometry explicit and modest (`480x832`, `32` frames) until a restore tuple exists.
+6. keep first-smoke geometry explicit and modest (`480x832`, `32` frames) until the restore tuple is validated.
+7. for the next restore validation, do not allow HF download fallback; the point is to prove R2 restore plus the Wan-link hook.
 
 ## Done State
 
@@ -434,3 +473,8 @@ First paid validation is done when:
 4. the reusable tuple is published to R2 if the environment is worth preserving;
 5. a later fresh restore run validates that tuple before it becomes the default fast path;
 6. docs record the exact run root, timings, spend, and artifact paths.
+
+Current completion status:
+
+1. Items 1-4 and 6 are complete for the cold path.
+2. Item 5 is not complete; the first restore validation exposed and patched a missing Wan-link hook, but the fixed restore path still needs a paid rerun.

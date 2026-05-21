@@ -1,6 +1,6 @@
 # Vast.ai
 
-_Last updated: 2026-05-20_
+_Last updated: 2026-05-21_
 
 Vast.ai is the current active GPU provider path for this repository.
 Prime Intellect files remain in the repo for historical compatibility, but new provider work should target Vast.
@@ -304,7 +304,8 @@ If using the B200-published tuple on cheaper GPUs, the wrapper deliberately pass
 LongLive2 sequence-parallel inference is the experimental path for one stream across two GPUs.
 It is not the same as renting a two-GPU host for Scope.
 
-Local plumbing exists; no paid LongLive2 run has been launched yet.
+LongLive2 paid bring-up has now produced a cold H200 x2 BF16 SP render and published the BF16 SP tuple to R2.
+The tuple is published but not yet validated as a restore fast path.
 The LongLive2 paper explicitly says NVFP4 acceleration is Blackwell-only; on A100/H100/H200, the intended compensation path is SP inference.
 Therefore the first Hopper paid lane is `bf16_sp`, not `nvfp4_s2`.
 
@@ -322,13 +323,23 @@ Instance lifecycle:
 2. prefer datacenter two-GPU listings with good disk/network and, when visible, better GPU topology;
 3. run `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` before spending;
 4. provision only with explicit `--create-instance`;
-5. restore the R2 LongLive2 tuple only after a validated restore tuple exists;
-6. otherwise build/download with `--no-restore --download-fallback` and a strict wall-clock cap;
-7. run one short offline SP smoke;
-8. pull the MP4, logs, generated config, `ffprobe`, sampled frames/contact sheet, per-GPU telemetry, selected-offer JSON, credit/budget JSON, and phase report;
-9. publish the tuple to R2 only if the smoke proves reusable imports/builds;
-10. validate the published tuple with a later fresh restore run before calling it a default fast path;
-11. destroy the instance by default and verify `vastai show instances --raw`.
+5. for the next Hopper validation, restore `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` from R2 with no HF download fallback;
+6. use build/download with `--no-restore --download-fallback` only when deliberately creating a new tuple or debugging the fallback path;
+7. confirm setup logs show the conservative `transformers` pin plus `x_clip_loss` and `decord` import guards passing;
+8. run one short offline SP smoke;
+9. pull the MP4, logs, generated config, `ffprobe`, sampled frames/contact sheet, per-GPU telemetry, selected-offer JSON, credit/budget JSON, and phase report;
+10. publish a new tuple to R2 only if the smoke proves reusable imports/builds; use `--publish-r2-on-success` when the publish should happen before automatic teardown;
+11. validate the published tuple with a fresh restore run before calling it a default fast path;
+12. destroy the instance by default and verify `vastai show instances --raw`.
+
+Latest LongLive2 telemetry:
+
+1. Successful cold run: `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/`.
+2. Output MP4: `832x480`, `125` frames, `24 fps`, `5.208s`, nonblank QA.
+3. Published R2 tuple: `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1`.
+4. First restore validation: `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T235723Z/`.
+5. Restore phase completed in `559s`, then render failed because the restore path did not recreate the upstream Wan symlink.
+6. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates that symlink; rerun restore validation before promoting the tuple.
 
 Acceptance:
 
@@ -353,7 +364,7 @@ No-spend preflight:
 bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight
 ```
 
-Paid wrapper shape, only after explicit approval:
+Cold publish wrapper shape, only when creating or replacing the tuple:
 
 ```bash
 bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
@@ -368,14 +379,39 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --sp-size 2 \
   --dp-size 1 \
   --seed 0 \
-  --max-alive-min 45 \
-  --budget-estimate-min 45 \
-  --min-credit-usd 7.00 \
-  --min-credit-reserve-usd 1.00 \
-  --max-estimated-spend-usd 6.00 \
+  --max-alive-min 60 \
+  --budget-estimate-min 60 \
+  --min-credit-usd 8.00 \
+  --min-credit-reserve-usd 0.50 \
+  --max-estimated-spend-usd 8.00 \
   --no-restore \
-  --download-fallback
+  --download-fallback \
+  --publish-r2-on-success
 ```
+
+Next restore-validation wrapper shape, only after enough credit is available:
+
+```bash
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
+  --create-instance \
+  --gpu-regex 'H100|H200|GH200' \
+  --min-gpu-count 2 \
+  --max-gpu-count 2 \
+  --profile bf16_sp \
+  --height 480 \
+  --width 832 \
+  --frames 32 \
+  --sp-size 2 \
+  --dp-size 1 \
+  --seed 0 \
+  --max-alive-min 20 \
+  --budget-estimate-min 20 \
+  --min-credit-usd 2.70 \
+  --min-credit-reserve-usd 0.20 \
+  --max-estimated-spend-usd 3.00
+```
+
+Do not add `--download-fallback` to this validation; the point is to prove the R2 tuple plus LongLive2 Wan-link restore hook.
 
 Blackwell NVFP4 shape, only after the BF16 SP path is proven or when explicitly targeting Blackwell:
 

@@ -139,13 +139,19 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - Use `VIDEO_MODEL=longlive2` for this path. `VIDEO_MODEL=longlive` remains the Daydream Scope alias.
 - LongLive2 EEG plumbing starts offline: compile stable EEG state changes into prompt blocks using `--schedule-csv` or repeated `--shot-prompt` inputs, then render a multi-shot video.
 - LongLive2 live EEG requires a future persistent runner with KV-recache/prompt-boundary handling; do not pretend the offline `torchrun` entry point is a live OSC target.
+- Keep the LongLive2 default `transformers` pin conservative. Upstream requirements are broad, but paid validation showed `transformers==5.9.0` broke `x_clip_loss`; `setup_longlive2.sh` now pins `4.57.3` and verifies that import.
+- Keep `decord` in the LongLive2 extra package list unless upstream requirements add it; paid validation showed upstream imports it without installing it.
 - NVFP4 acceleration is Blackwell-only per the LongLive2 paper limitation. On A100/H100/H200, use `bf16_sp` sequence-parallel inference as the compensation path unless intentionally debugging NVFP4/FourOverSix.
 - The upstream SP script disables `kv_quant` under Ulysses SP today; do not claim SP+KV-quant speedups unless a real run proves them.
 - A valid LongLive2 two-card run must show one output stream plus per-GPU telemetry proving both cards were active.
-- No validated LongLive2 R2 tuple exists until a real render succeeds, the tuple is published, and a fresh restore run proves it. Use `--no-restore --download-fallback` for the first paid smoke unless `longlive2plan.md` documents a later validated restore tuple.
+- Latest cold LongLive2 two-card run succeeded on H200 x2 and published `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` to R2. Treat it as `published_tuple`, not `validated_restore_tuple`, until a fresh restore render passes.
+- The first fresh restore validation fetched/extracted the tuple but failed before render because the restored cache did not recreate LongLive2's vendor-local Wan symlink. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates that link; the next paid validation should run with restore enabled and no HF download fallback.
+- `VideoDiffusion/download_longlive2_models.sh` should work with either `hf`/`huggingface-cli` or the Python `huggingface_hub` fallback from the LongLive2 venv.
+- LongLive2 runtime needs both LongLive2 checkpoint artifacts and the Wan2.2 base tree. Keep Wan download/linking enabled unless intentionally doing cache-only debugging.
+- Use `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --publish-r2-on-success` when the intent is to publish the first reusable tuple before teardown after a successful render.
 - R2 may cache the LongLive2 env, built extensions, checkpoints, and generated merged/materialized checkpoints; it cannot preserve a live NCCL process group or GPU-resident model.
 - Run `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` before paid LongLive2 work; it should pass local checks, dry-run, offer selection, active-instance, credit, and budget gates.
-- First LongLive2 paid smoke defaults should stay small and explicit: `480x832`, `32` frames, `sp_size=2`, `dp_size=1`, `seed=0`, max-alive around `45 min`, and failure-safe artifact pullback enabled by default.
+- First LongLive2 paid smoke defaults should stay small and explicit: `480x832`, `32` frames, `sp_size=2`, `dp_size=1`, `seed=0`, max-alive around `45 min` for render-only or `60 min` when publishing R2 before teardown, and failure-safe artifact pullback enabled by default.
 - EEG integration comes after distributed inference is proven: offline prompt schedule first, persistent runner second, live output third.
 - Paid LongLive2 tests must use explicit two-GPU selection and teardown by default.
 - Do not promote LongLive2 as the default realtime path until it beats the one-GPU Scope baseline on speed, cost, and visual acceptability.

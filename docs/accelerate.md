@@ -1,6 +1,6 @@
 # Acceleration Playbook
 
-_Last updated: 2026-05-20_
+_Last updated: 2026-05-21_
 
 This is the canonical performance strategy for this repository.
 
@@ -13,7 +13,7 @@ Policy decision for this repo:
    - fallback: `sdpa`
 3. Scope/LongLive is the first realtime EEG validation path. B200 has validated the control path; RTX 4090 did not hold realtime at `320x576`.
 4. Vast + Cloudflare R2 is the current provider/storage architecture; Prime references below are legacy context unless explicitly revived.
-5. LongLive2 sequence-parallel inference is the experimental one-stream multi-GPU path. Keep it separate from Scope until a two-card run proves real single-stream speedup.
+5. LongLive2 sequence-parallel inference is the experimental one-stream multi-GPU path. A cold H200 x2 BF16 SP render now works and its tuple is published to R2; the restored fast path still needs one fresh validation after the Wan-link restore patch.
 
 ## Scope / LongLive acceleration policy
 
@@ -129,13 +129,31 @@ Planned tuple families:
 | NVFP4 S2 SM100 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1` | `B200/GB200 x1-2` | maximum speed path |
 | NVFP4 S2 SM120 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` | `RTX 50/60 x1-2` | cheaper Blackwell candidate after SM100 proof |
 
+Latest H200 x2 BF16 SP result:
+
+1. Cold build/download/render run: `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/`.
+2. Output: one local MP4, `832x480`, `125` frames, `24 fps`, `5.208s`, nonblank contact sheet.
+3. GPU use: both H200s active, max `36341 MiB` and `100%` utilization per card.
+4. Total wrapper elapsed: `1474s`; estimated compute spend about `$3.170`.
+5. Phase timings: setup clone `29s`, restore/download/build `235s`, render `125s`, R2 publish `972s`, artifact pullback `28s`, teardown `3s`.
+6. Published R2 tuple: `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1`.
+7. Published tuple size: env archive `3,977,262,169` bytes, weights archive `44,203,243,520` bytes, flash-attn wheel `256,043,372` bytes.
+
+Latest restore validation result:
+
+1. Fresh restore run: `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T235723Z/`.
+2. R2 tuple restore succeeded in `559s`, proving that the large archive fetch/extract path works on a fresh H200 x2 host.
+3. The render failed because the restored cache did not recreate the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` symlink.
+4. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates and checks that symlink after LongLive2 tuple extraction.
+5. Current tuple status is `published_tuple`; promote it to `validated_restore_tuple` only after a fresh restore render passes with the patched restore script.
+
 Implemented local plumbing:
 
-1. `VideoDiffusion/setup_longlive2.sh` clones/pins LongLive2 and builds BF16 or NVFP4 environments.
-2. `VideoDiffusion/download_longlive2_models.sh` caches BF16, NVFP4 S4, or NVFP4 S2 checkpoints.
+1. `VideoDiffusion/setup_longlive2.sh` clones/pins LongLive2, pins `transformers==4.57.3` by default, installs `decord`, verifies LongLive2's import contracts, and builds BF16 or NVFP4 environments.
+2. `VideoDiffusion/download_longlive2_models.sh` caches BF16, NVFP4 S4, or NVFP4 S2 checkpoints, downloads/links Wan2.2 base assets by default, and uses Python `huggingface_hub` fallback when no HF CLI binary is installed.
 3. `VideoDiffusion/longlive2_config.py` generates SP configs and converts EEG schedule CSVs into upstream multi-shot prompt folders.
 4. `VideoDiffusion/run_longlive2_sp_offline.sh` creates a launch plan, starts `torchrun`, records GPU telemetry, and invokes report/QA generation.
-5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` wraps two-GPU Vast selection, credit/budget checks, R2 restore, run, local pullback, phase/cost reports, and teardown.
+5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` wraps two-GPU Vast selection, credit/budget checks, R2 restore/download, run, optional publish-on-success, local pullback, phase/cost reports, and teardown.
 6. `VideoDiffusion/run_longlive2_sp_benchmark.sh` runs same-prompt/same-seed `sp_size=1` vs `sp_size=2` comparisons and writes `speedup_sp2_over_sp1`.
 7. `VideoDiffusion/longlive2_run_report.py` parses SP logs, GPU telemetry, ffprobe metadata, artifact QA, and wrapper phase markers.
 
@@ -145,17 +163,17 @@ R2 fast path:
 2. do not try to cache a live NCCL process group or GPU-loaded model;
 3. publish only after a minimal render proves the tuple imports and runs;
 4. do not call a published tuple validated until a fresh restore run produces a new render;
-5. for first paid builds, publish before teardown if the env is reusable.
+5. for first paid builds, publish before teardown with `--publish-r2-on-success` if the env is reusable;
+6. after restore, recreate model-specific relative links such as LongLive2's `wan_models/Wan2.2-TI2V-5B` before launching `torchrun`.
 
-Validation order:
+Validation order from here:
 
 1. no-cost config/report selftests;
-2. BF16 two-GPU offline smoke;
-3. publish the BF16 tuple if the first render proves it is reusable;
-4. validate BF16 tuple restore on a fresh instance;
-5. one-GPU vs two-GPU speedup comparison;
-6. NVFP4 S2 import/render smoke;
-7. live runner and EEG bridge only after useful distributed speedup is measured.
+2. patched BF16 tuple restore on a fresh instance with no HF fallback;
+3. promote the BF16 tuple to validated only if that restore render passes;
+4. one-GPU vs two-GPU speedup comparison;
+5. NVFP4 S2 import/render smoke;
+6. live runner and EEG bridge only after useful distributed speedup is measured.
 
 See `docs/video-longlive2-sp-streaming.md` for the full plan.
 

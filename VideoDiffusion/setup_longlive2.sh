@@ -17,6 +17,8 @@ LONGLIVE2_MAX_JOBS="${LONGLIVE2_MAX_JOBS:-}"
 LONGLIVE2_BUILD_FLASH_ATTN_FROM_SOURCE="${LONGLIVE2_BUILD_FLASH_ATTN_FROM_SOURCE:-}"
 LONGLIVE2_FLASH_ATTN_REPO_URL="${LONGLIVE2_FLASH_ATTN_REPO_URL:-https://github.com/Dao-AILab/flash-attention.git}"
 LONGLIVE2_FLASH_ATTN_REF="${LONGLIVE2_FLASH_ATTN_REF:-v2.8.3}"
+LONGLIVE2_TRANSFORMERS_VERSION="${LONGLIVE2_TRANSFORMERS_VERSION:-4.57.3}"
+LONGLIVE2_EXTRA_PIP_PACKAGES="${LONGLIVE2_EXTRA_PIP_PACKAGES:-decord}"
 
 usage() {
   cat <<EOF
@@ -117,6 +119,8 @@ LONGLIVE2_SRC_DIR=${LONGLIVE2_SRC_DIR}
 LONGLIVE2_PROFILE=${LONGLIVE2_PROFILE}
 LONGLIVE2_VENV_DIR=${LONGLIVE2_VENV_DIR}
 LONGLIVE2_CUDA_ARCHS=${LONGLIVE2_CUDA_ARCHS}
+LONGLIVE2_TRANSFORMERS_VERSION=${LONGLIVE2_TRANSFORMERS_VERSION}
+LONGLIVE2_EXTRA_PIP_PACKAGES=${LONGLIVE2_EXTRA_PIP_PACKAGES}
 EOF
 
 if [[ "${LONGLIVE2_SKIP_BUILD}" == "1" ]]; then
@@ -138,10 +142,36 @@ fi
 PY="${LONGLIVE2_VENV_DIR}/bin/python"
 "${PY}" -m pip install -U pip setuptools wheel ninja packaging
 
+pin_longlive2_python_deps() {
+  if [[ -n "${LONGLIVE2_TRANSFORMERS_VERSION}" ]]; then
+    video_log "Pinning transformers==${LONGLIVE2_TRANSFORMERS_VERSION} for LongLive2 X-CLIP imports."
+    "${PY}" -m pip install "transformers==${LONGLIVE2_TRANSFORMERS_VERSION}"
+  fi
+}
+
+install_longlive2_extra_python_deps() {
+  if [[ -n "${LONGLIVE2_EXTRA_PIP_PACKAGES}" ]]; then
+    read -r -a extra_packages <<<"${LONGLIVE2_EXTRA_PIP_PACKAGES}"
+    video_log "Installing LongLive2 extra Python packages: ${LONGLIVE2_EXTRA_PIP_PACKAGES}."
+    "${PY}" -m pip install "${extra_packages[@]}"
+  fi
+}
+
+verify_longlive2_python_deps() {
+  "${PY}" - <<'PY'
+import decord  # noqa: F401
+from transformers.models.x_clip.modeling_x_clip import x_clip_loss  # noqa: F401
+print("[longlive2-setup] transformers x_clip_loss and decord imports ok")
+PY
+}
+
 if [[ "${LONGLIVE2_PROFILE}" == "bf16_sp" ]]; then
   video_log "Installing BF16 SP LongLive2 dependencies."
   "${PY}" -m pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.8.0 torchvision==0.23.0
   "${PY}" -m pip install -r "${LONGLIVE2_SRC_DIR}/requirements.txt"
+  pin_longlive2_python_deps
+  install_longlive2_extra_python_deps
+  verify_longlive2_python_deps
   "${PY}" -m pip install flash-attn --no-build-isolation
 else
   if [[ -z "${LONGLIVE2_BUILD_FLASH_ATTN_FROM_SOURCE}" ]]; then
@@ -150,6 +180,9 @@ else
   video_log "Installing NVFP4 LongLive2 dependencies."
   "${PY}" -m pip install -r "${LONGLIVE2_SRC_DIR}/requirements.txt"
   "${PY}" -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu128 torch==2.10.0 torchvision==0.25.0
+  pin_longlive2_python_deps
+  install_longlive2_extra_python_deps
+  verify_longlive2_python_deps
   if [[ -n "${LONGLIVE2_MAX_JOBS}" ]]; then
     export MAX_JOBS="${LONGLIVE2_MAX_JOBS}"
   fi

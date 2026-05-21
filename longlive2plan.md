@@ -104,7 +104,7 @@ Last no-spend check: 2026-05-21.
 
 ```text
 active Vast instances: []
-Vast credit: about $9.63
+Vast credit: about $0.64
 current viable LongLive2 Hopper offer: H200 x2 at about $7.743/hour
 ```
 
@@ -121,10 +121,10 @@ Approximate H200 x2 compute cost:
 
 Budget conclusion:
 
-1. Enough for a controlled first BF16 SP smoke.
-2. Enough for smoke plus a minimal `sp1` vs `sp2` comparison only if setup is smooth.
-3. Not enough for an open-ended build/debug session.
-4. Not enough for a full Hopper smoke plus a Blackwell NVFP4 follow-up unless more credit is added or the first run is unusually fast.
+1. Current credit is no longer enough for another H200 x2 restore validation.
+2. A fresh H200 x2 restore/render validation should be budgeted around `$2.50-$3.00` for a tightly capped `18-20 min` run.
+3. A `sp1` vs `sp2` comparison or any Blackwell NVFP4 follow-up needs additional credit.
+4. Do not launch another paid LongLive2 instance until credit is topped up or the user explicitly approves a smaller-risk spend plan.
 
 ## Current Readiness
 
@@ -143,16 +143,24 @@ Ready locally:
 11. The paid wrapper now tries best-effort artifact pullback before teardown even when setup/download/render fails.
 12. The paid wrapper now enforces a local max-alive timeout around remote SSH phases.
 13. `VideoDiffusion/run_longlive2_sp_benchmark.sh` now provides the same-prompt/same-seed `sp1` vs `sp2` speedup comparison.
+14. `VideoDiffusion/download_longlive2_models.sh` now falls back to `huggingface_hub.snapshot_download` through the LongLive2 venv when `hf`/`huggingface-cli` is absent.
+15. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --publish-r2-on-success` can publish the env/cache tuple before teardown after a successful render.
+16. `VideoDiffusion/setup_longlive2.sh` now pins `transformers==4.57.3` by default and verifies `transformers.models.x_clip.modeling_x_clip.x_clip_loss` before model download.
+17. `VideoDiffusion/setup_longlive2.sh` now installs `decord` as an extra package and verifies it before model download.
+18. `VideoDiffusion/download_longlive2_models.sh` now downloads Wan2.2 base assets by default and links them into the upstream `wan_models/Wan2.2-TI2V-5B` path.
+19. A paid H200 x2 BF16 SP render succeeded and published the first LongLive2 BF16 SP tuple to R2.
+20. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates the LongLive2 Wan runtime symlink after tuple restore.
 
 Not ready / not yet proven:
 
-1. No validated LongLive2 R2 tuple exists yet.
-2. No paid LongLive2 GPU render has been completed.
+1. The LongLive2 BF16 SP tuple is published to R2 but still needs a fresh restore render after the Wan-link restore patch.
+2. The successful render was a cold build/download/render path, not a validated fast restore path.
 3. No `sp1` vs `sp2` speedup has been measured.
 4. No persistent live LongLive2 EEG runner exists yet.
 5. No LongLive2 WebRTC/live-display path exists yet.
 
-This means the first paid run is a build/download/render smoke, not a fast tuple-restore smoke.
+This means the first paid milestone is complete for cold BF16 SP render and tuple publication, but the next milestone is fresh restore validation.
+The first restore validation proved R2 fetch/extract timing, then exposed a missing Wan symlink in the restore path; the code now patches that boundary, but the fixed path has not been rerun because the remaining Vast credit is too low for another safe H200 x2 validation.
 
 ## Live Run Ledger
 
@@ -165,6 +173,13 @@ and account identifiers out of this file.
 | 2026-05-21 | no-spend validation | pass | none | n/a | `$0` | none | `bash scripts/check.sh` and `git diff --check` passed; `vastai show instances --raw` returned `[]` |
 | 2026-05-21 | wrapper preflight | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T224724Z/` | credit `$9.626478`, required `$7.00`, active instances `[]`; no paid instance created |
 | 2026-05-21 | wrapper preflight | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T224854Z/` | rerun after final timeout/docs patch; credit `$9.626478`, required `$7.00`, active instances `[]`; no paid instance created |
+| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.918` over `427s`; planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T225420Z/` | setup/build reached model download, then failed because no `hf` or `huggingface-cli` binary existed; artifact pullback and teardown succeeded; active instances verified `[]` |
+| 2026-05-21 | no-spend patch validation | pass | none | n/a | `$0` | `VideoDiffusion/.tmp/current_vast_credit_after_longlive2_fail.json` | added Python HF fallback plus publish-on-success wrapper path; forced downloader fallback dry-run passed; current credit about `$8.9355`; active instances `[]`; current H200 x2 offers start at `$7.743/h` |
+| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.667` over `310s`; planned `$7.743` for `60 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T230713Z/` | HF model download succeeded through Python fallback; `torchrun` failed importing `x_clip_loss` from `transformers==5.9.0`; artifact pullback and teardown succeeded; active instances verified `0`; current credit about `$8.213` |
+| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.693` over `322s`; planned `$7.743` for `60 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T231513Z/` | `transformers==4.57.3` pin and `x_clip_loss` guard passed; HF model download succeeded; `torchrun` failed because upstream imports `decord` but requirements did not install it; artifact pullback and teardown succeeded; active instances verified `0`; current credit about `$7.544` |
+| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.895` over `416s`; planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T232208Z/` | `transformers` and `decord` guards passed; SP initialized with `sp_sizes=[2]`; failed because Wan2.2 base assets were not downloaded/linked; artifact pullback and teardown succeeded; active instances verified `[]`; current credit about `$6.126` |
+| 2026-05-21 | paid BF16 SP smoke + R2 publish | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$3.170` over `1474s`; planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/` | cold setup/download/render succeeded; MP4 is `832x480`, `125` frames, `24 fps`, `5.208s`; SP used both H200s with max `36341 MiB` each; R2 publish succeeded with `3.977 GB` env archive, `44.203 GB` weights archive, and flash-attn wheel; local artifact pullback and teardown succeeded; active instances verified `[]`; current credit after charges about `$2.918` |
+| 2026-05-21 | paid BF16 SP restore validation | fail after restore | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$1.682` over `782s`; planned `$2.323` for `18 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T235723Z/` | R2 tuple restore succeeded in `559s`, then `torchrun` failed because restored weights did not recreate the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` link; patched `restore_r2_prebuild_model.sh` to recreate and require that link; artifact pullback and teardown succeeded; active instances verified `[]`; current credit about `$0.64` |
 
 ## What Changed
 
@@ -173,6 +188,12 @@ Use this section for short operator notes that explain why the plan changed.
 - 2026-05-21: Created the root paid-run control plan and expanded it into a live phase-by-phase checklist. Current next action is no-spend preflight, then one controlled BF16 SP paid smoke after explicit go.
 - 2026-05-21: Updated `AGENTS.md` to treat this file as the source-of-truth paid-run checklist, then recorded local validation and no-active-instance status.
 - 2026-05-21: Added code guardrails before paid launch: wrapper `--preflight`, failure-safe artifact pullback, phase/cost report generation, selected-offer/credit/budget artifacts, max-alive timeout, lower first-smoke geometry, seed plumbing, and a same-seed SP benchmark wrapper.
+- 2026-05-21: First paid H200 x2 attempt failed before inference because the remote BF16 venv exposed `huggingface_hub` but no `hf` CLI binary. Patched the downloader to use Python `snapshot_download` fallback and added wrapper `--publish-r2-on-success` so a successful paid setup can publish the tuple before teardown.
+- 2026-05-21: Second paid H200 x2 attempt passed setup and HF download, then failed at upstream import time because unbounded `transformers>=4.49.0` resolved to `5.9.0`, which did not expose `x_clip_loss` in the installed module. Pinned default `transformers==4.57.3`, where Hugging Face source still exposes `x_clip_loss`, and added a setup import guard.
+- 2026-05-21: Third paid H200 x2 attempt proved the Transformers pin and download path, then failed on missing `decord`. Added `LONGLIVE2_EXTRA_PIP_PACKAGES=decord` default plus a setup import guard.
+- 2026-05-21: Fourth paid H200 x2 attempt proved SP initialization and failed at missing Wan2.2 base weights. Changed the LongLive2 downloader and paid wrapper so Wan base assets are included by default and linked into the upstream relative path.
+- 2026-05-21: Fifth paid H200 x2 attempt succeeded end-to-end on the cold build/download path, produced a local nonblank `832x480` MP4, published the BF16 SP tuple to R2, pulled artifacts locally, and tore down the instance.
+- 2026-05-21: First fresh restore validation restored the R2 tuple in `559s`, then failed because tuple extraction did not recreate LongLive2's vendor-local Wan symlink. Patched `VideoDiffusion/restore_r2_prebuild_model.sh` so future restores link `VideoDiffusion/.cache/longlive2/wan_models/Wan2.2-TI2V-5B` into `VideoDiffusion/.vendors/LongLive2/wan_models/Wan2.2-TI2V-5B`.
 
 ## Step-By-Step Checklist
 
@@ -324,14 +345,15 @@ estimated_cost = hourly_rate_usd * expected_minutes / 60
 ```
 
 - [ ] Confirm current Vast credit leaves enough room for the planned window plus teardown margin.
-- [ ] If current credit is below about `$7.00`, stop.
+- [ ] If running patched restore validation, require about `$2.50-$3.00` available for an `18-20 min` cap.
+- [ ] If running a cold build/publish rerun, require about `$7.00+` available.
 - [ ] If the best two-card Hopper offer is above `$8.00/hour`, stop or ask for a new cap.
 
 Pass condition: a two-GPU H100/H200/GH200 offer fits the budget window.
 
 Fail action: do not provision; update the ledger with the cheapest viable offer and reason for stopping.
 
-### Phase 5: First Paid BF16 SP Smoke
+### Phase 5: Cold Build/Publish BF16 SP Smoke
 
 - [ ] Launch only after Phases 0-4 pass:
 
@@ -341,22 +363,23 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --create-instance \
   --gpu-regex 'H100|H200|GH200' \
   --min-gpu-count 2 \
-    --max-gpu-count 2 \
-    --max-dph 8.00 \
-    --profile bf16_sp \
-    --height 480 \
-    --width 832 \
-    --frames 32 \
-    --sp-size 2 \
-    --dp-size 1 \
-    --seed 0 \
-    --max-alive-min 45 \
-    --budget-estimate-min 45 \
-    --min-credit-usd 7.00 \
-    --min-credit-reserve-usd 1.00 \
-    --max-estimated-spend-usd 6.00 \
-    --no-restore \
-    --download-fallback
+  --max-gpu-count 2 \
+  --max-dph 8.00 \
+  --profile bf16_sp \
+  --height 480 \
+  --width 832 \
+  --frames 32 \
+  --sp-size 2 \
+  --dp-size 1 \
+  --seed 0 \
+  --max-alive-min 60 \
+  --budget-estimate-min 60 \
+  --min-credit-usd 8.00 \
+  --min-credit-reserve-usd 0.50 \
+  --max-estimated-spend-usd 8.00 \
+  --no-restore \
+  --download-fallback \
+  --publish-r2-on-success
 ```
 
 - [ ] Start a timer as soon as the instance is created.
@@ -628,7 +651,7 @@ python3 scripts/vast/select_video_offer.py \
 Current last-selected candidate:
 
 ```text
-offer_id: 28747627
+offer_id: 28957790
 gpu: H200 x2
 hourly_rate_usd: about 7.7433
 gpu_ram: about 143 GB per GPU
@@ -637,11 +660,11 @@ cuda_max_good: 12.8
 
 Re-query immediately before launch because Vast offers are dynamic.
 
-## First Paid Run: Controlled BF16 SP Smoke
+## Cold Build/Publish Run: Controlled BF16 SP Smoke
 
-Use this only after explicit approval to spend.
+This path is already proven by `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/`.
+Use it only after explicit approval to spend when deliberately replacing or rebuilding the tuple.
 
-Because no validated LongLive2 tuple exists yet, avoid a doomed restore-only run.
 Use the build/download fallback path:
 
 ```bash
@@ -659,13 +682,14 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --sp-size 2 \
   --dp-size 1 \
   --seed 0 \
-  --max-alive-min 45 \
-  --budget-estimate-min 45 \
-  --min-credit-usd 7.00 \
-  --min-credit-reserve-usd 1.00 \
-  --max-estimated-spend-usd 6.00 \
+  --max-alive-min 60 \
+  --budget-estimate-min 60 \
+  --min-credit-usd 8.00 \
+  --min-credit-reserve-usd 0.50 \
+  --max-estimated-spend-usd 8.00 \
   --no-restore \
-  --download-fallback
+  --download-fallback \
+  --publish-r2-on-success
 ```
 
 Why `frames 32` first:
@@ -692,6 +716,41 @@ Expected wrapper behavior:
 6. run `torchrun` through `run_longlive2_sp_offline.sh`;
 7. pull artifacts to `/Users/xenochain/Downloads/<run_id>/`;
 8. teardown by default.
+
+## Next Paid Run: Patched Restore Validation
+
+Use this after enough credit is available.
+Do not pass `--download-fallback`; this run should prove that R2 restore plus the LongLive2 Wan-link hook is sufficient.
+
+```bash
+cd /Users/xenochain/Code/neurodiffusion
+bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
+  --create-instance \
+  --gpu-regex 'H100|H200|GH200' \
+  --min-gpu-count 2 \
+  --max-gpu-count 2 \
+  --max-dph 8.00 \
+  --profile bf16_sp \
+  --height 480 \
+  --width 832 \
+  --frames 32 \
+  --sp-size 2 \
+  --dp-size 1 \
+  --seed 0 \
+  --max-alive-min 20 \
+  --budget-estimate-min 20 \
+  --min-credit-usd 2.70 \
+  --min-credit-reserve-usd 0.20 \
+  --max-estimated-spend-usd 3.00
+```
+
+Expected restore behavior:
+
+1. clone LongLive2 with `--skip-build`;
+2. restore `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` from R2;
+3. restore script recreates `VideoDiffusion/.vendors/LongLive2/wan_models/Wan2.2-TI2V-5B`;
+4. `torchrun` renders the short SP smoke without HF downloads or dependency builds;
+5. local artifact pullback and teardown still happen by default.
 
 ## Acceptance Criteria For First Smoke
 
@@ -817,11 +876,11 @@ Before saying "go", confirm:
 2. `bash scripts/check.sh` passes.
 3. `bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` passes.
 4. `vastai show instances --raw` returns `[]`.
-5. Vast credit is still at least about `$7.00`; preferably `$9.00+`.
+5. Vast credit is enough for the intended phase: about `$2.50-$3.00` for one tight H200 x2 restore validation, or `$7.00+` for a cold build/publish rerun.
 6. a current H100/H200 x2 offer exists at `<= $8.00/h`.
 7. the run uses `bf16_sp`, not NVFP4, on H100/H200.
-8. the run uses `--no-restore --download-fallback` until a validated LongLive2 restore tuple exists.
+8. the next validation uses restore with no HF download fallback; use `--no-restore --download-fallback` only when deliberately rebuilding or replacing the tuple.
 9. the run uses explicit modest first-smoke geometry, currently `480x832` and `32` frames.
 10. the wrapper max-alive/budget guards are enabled and the operator watches for obvious stuck setup.
 
-If those conditions hold, the repo is ready for the first controlled paid BF16 SP smoke.
+If those conditions hold, the repo is ready for the patched restore validation run.

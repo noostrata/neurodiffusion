@@ -57,7 +57,13 @@ LONGLIVE2_SHOT_PROMPTS="${LONGLIVE2_SHOT_PROMPTS:-}"
 LONGLIVE2_SHOT_DURATIONS="${LONGLIVE2_SHOT_DURATIONS:-}"
 RESTORE_TUPLE="${LONGLIVE2_VAST_RESTORE_TUPLE:-1}"
 DOWNLOAD_FALLBACK="${LONGLIVE2_VAST_DOWNLOAD_FALLBACK:-0}"
-INCLUDE_WAN="${LONGLIVE2_VAST_INCLUDE_WAN:-0}"
+INCLUDE_WAN="${LONGLIVE2_VAST_INCLUDE_WAN:-1}"
+PUBLISH_R2_ON_SUCCESS="${LONGLIVE2_VAST_PUBLISH_R2_ON_SUCCESS:-0}"
+PUBLISH_INCLUDE_WEIGHTS="${LONGLIVE2_VAST_PUBLISH_INCLUDE_WEIGHTS:-1}"
+PUBLISH_ENV_COMPRESSION="${LONGLIVE2_VAST_PUBLISH_ENV_COMPRESSION:-zstd}"
+PUBLISH_WEIGHTS_COMPRESSION="${LONGLIVE2_VAST_PUBLISH_WEIGHTS_COMPRESSION:-none}"
+PUBLISH_BUILD_GPU_CLASS="${LONGLIVE2_VAST_PUBLISH_BUILD_GPU_CLASS:-hopper-sm90}"
+PUBLISH_VALIDATED_PROFILES="${LONGLIVE2_VAST_PUBLISH_VALIDATED_PROFILES:-longlive2_bf16_sp_offline_smoke}"
 DRY_RUN="${LONGLIVE2_VAST_DRY_RUN:-0}"
 SSH_READY_TIMEOUT_S="${LONGLIVE2_VAST_SSH_READY_TIMEOUT_S:-240}"
 
@@ -104,7 +110,14 @@ Options:
   --local-out-dir <path>        Local artifact directory (default: ${LOCAL_OUT_DIR})
   --no-restore                  Skip R2 tuple restore and run setup/download path
   --download-fallback           If restore fails, download LongLive2 model artifacts from HF
-  --include-wan                 Also download Wan2.2 base assets during fallback
+  --include-wan                 Also download Wan2.2 base assets during fallback (default)
+  --no-include-wan              Skip Wan2.2 base assets; only valid for cache-only/debug use
+  --publish-r2-on-success       Publish env/cache tuple to R2 after a successful render and before teardown
+  --no-publish-weights          Publish env/wheelhouse only when --publish-r2-on-success is set
+  --publish-env-compression <mode>
+                                  gzip|zstd|none for env archive (default: ${PUBLISH_ENV_COMPRESSION})
+  --publish-weights-compression <mode>
+                                  gzip|zstd|none for weights archive (default: ${PUBLISH_WEIGHTS_COMPRESSION})
   --allow-runtime-gpu-mismatch  Allow smXX runtime tag to select another GPU family
   --dry-run                     Print the plan; do not call Vast or SSH
 EOF
@@ -254,6 +267,26 @@ while [[ $# -gt 0 ]]; do
     --include-wan)
       INCLUDE_WAN="1"
       shift
+      ;;
+    --no-include-wan)
+      INCLUDE_WAN="0"
+      shift
+      ;;
+    --publish-r2-on-success)
+      PUBLISH_R2_ON_SUCCESS="1"
+      shift
+      ;;
+    --no-publish-weights)
+      PUBLISH_INCLUDE_WEIGHTS="0"
+      shift
+      ;;
+    --publish-env-compression)
+      PUBLISH_ENV_COMPRESSION="$2"
+      shift 2
+      ;;
+    --publish-weights-compression)
+      PUBLISH_WEIGHTS_COMPRESSION="$2"
+      shift 2
       ;;
     --allow-runtime-gpu-mismatch)
       ALLOW_RUNTIME_GPU_MISMATCH="1"
@@ -826,6 +859,22 @@ remote_run_smoke() {
   remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/run_longlive2_sp_offline.sh $(printf '%q ' "${run_args[@]}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/run_longlive2_sp_offline.wrapper.log")"
 }
 
+remote_publish_r2_tuple() {
+  publish_args=(
+    --model longlive2
+    --runtime-tag "${RUNTIME_TAG}"
+    --tiers longlive2-bf16-sp-hopper
+    --build-gpu-class "${PUBLISH_BUILD_GPU_CLASS}"
+    --validated-profiles "${PUBLISH_VALIDATED_PROFILES}"
+    --env-compression "${PUBLISH_ENV_COMPRESSION}"
+    --weights-compression "${PUBLISH_WEIGHTS_COMPRESSION}"
+  )
+  if [[ "${PUBLISH_INCLUDE_WEIGHTS}" == "1" ]]; then
+    publish_args+=(--include-weights)
+  fi
+  remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); R2_ENV_FILE=$(q "${REMOTE_R2_ENV}") R2_PREFIX=$(q "${R2_PREFIX}") ALLOW_MISSING_WEIGHTS=0 bash VideoDiffusion/publish_r2_prebuild_model.sh $(printf '%q ' "${publish_args[@]}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/publish_longlive2_r2_tuple.log")"
+}
+
 pull_artifacts() {
   echo "[longlive2-vast] pulling artifacts to ${LOCAL_OUT_DIR}"
   mkdir -p "${LOCAL_OUT_DIR}"
@@ -917,6 +966,10 @@ seed=${LONGLIVE2_SEED}
 schedule_csv=${LONGLIVE2_SCHEDULE_CSV}
 local_out_dir=${LOCAL_OUT_DIR}
 phase_report=${PHASE_REPORT}
+publish_r2_on_success=${PUBLISH_R2_ON_SUCCESS}
+publish_include_weights=${PUBLISH_INCLUDE_WEIGHTS}
+publish_env_compression=${PUBLISH_ENV_COMPRESSION}
+publish_weights_compression=${PUBLISH_WEIGHTS_COMPRESSION}
 EOF
   exit 0
 fi
@@ -950,7 +1003,7 @@ mark_phase "remote_system_deps_done"
 mark_phase "repo_sync_start"
 sync_repo_to_remote
 mark_phase "repo_sync_done"
-if [[ "${RESTORE_TUPLE}" == "1" ]]; then
+if [[ "${RESTORE_TUPLE}" == "1" || "${PUBLISH_R2_ON_SUCCESS}" == "1" ]]; then
   mark_phase "copy_r2_secret_start"
   copy_r2_secret
   mark_phase "copy_r2_secret_done"
@@ -964,6 +1017,11 @@ mark_phase "restore_or_download_done"
 mark_phase "longlive2_run_start"
 remote_run_smoke
 mark_phase "longlive2_run_done"
+if [[ "${PUBLISH_R2_ON_SUCCESS}" == "1" ]]; then
+  mark_phase "publish_r2_start"
+  remote_publish_r2_tuple
+  mark_phase "publish_r2_done"
+fi
 mark_phase "artifact_pull_start"
 pull_artifacts
 mark_phase "artifact_pull_done"

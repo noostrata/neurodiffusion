@@ -1,6 +1,6 @@
 # Budget Analysis (Vast + Cloudflare R2)
 
-_Last validated: 2026-05-20T00:00:00Z_
+_Last validated: 2026-05-21T00:10:00Z_
 
 This is the canonical budget reference for this repository.
 Use it for storage planning, run-time caps, and quick spend estimates before MAGI runs.
@@ -219,6 +219,39 @@ Budget controls:
 Actual invoice-observed spend for `scope_longlive_vast_matrix_20260520T200307Z` was about `$4.10`.
 Vast credit moved from `$15.519453` to `$11.424968`.
 
+### Vast LongLive2 BF16 SP bring-up (2026-05-21)
+
+Paid H200 x2 run ladder; every created instance was destroyed and `vastai show instances --raw` returned `[]` after teardown.
+
+| Run | Outcome | Observed phase spend | Elapsed | Local artifacts |
+| --- | --- | ---: | ---: | --- |
+| `longlive2_sp_vast_smoke_20260520T225420Z` | failed before render: no `hf` / `huggingface-cli` binary | about `$0.918` | `427s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T225420Z/` |
+| `longlive2_sp_vast_smoke_20260520T230713Z` | failed before render: `transformers==5.9.0` missing `x_clip_loss` import | about `$0.667` | `310s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T230713Z/` |
+| `longlive2_sp_vast_smoke_20260520T231513Z` | failed before render: missing `decord` | about `$0.693` | `322s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T231513Z/` |
+| `longlive2_sp_vast_smoke_20260520T232208Z` | failed before render: missing Wan2.2 base asset/link | about `$0.895` | `416s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T232208Z/` |
+| `longlive2_sp_vast_smoke_20260520T233039Z` | succeeded: cold render + R2 publish + local pullback | about `$3.170` | `1474s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/` |
+| `longlive2_sp_vast_smoke_20260520T235723Z` | restore fetched tuple, then failed before render on missing restored Wan symlink | about `$1.682` | `782s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T235723Z/` |
+
+Successful cold-render details:
+
+1. GPU: `H200 x2`, selected offer `28957790`, listed at about `$7.743/h`.
+2. Output: `832x480`, `125` frames, `24 fps`, `5.208s`, nonblank QA.
+3. Phase timings: setup clone `29s`, restore/download/build `235s`, render `125s`, R2 publish `972s`, pullback `28s`, teardown `3s`.
+4. Published R2 tuple: `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1`.
+5. R2 objects: env archive `3,977,262,169` bytes; weights archive `44,203,243,520` bytes; flash-attn wheel `256,043,372` bytes.
+
+Restore validation details:
+
+1. The first fresh restore fetched/extracted the tuple in `559s`, so R2 restore already removes the dependency build and HF download steps.
+2. The render then failed because tuple restore had not recreated the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` symlink.
+3. The restore script now recreates that symlink, but the fixed path has not been rerun because remaining Vast credit is about `$0.64`.
+
+Budget implication:
+
+1. Another H200 x2 restore validation needs roughly `$2.50-$3.00` available for an `18-20 min` capped run.
+2. A same-instance `sp1` vs `sp2` comparison should be budgeted separately after restore validation.
+3. Blackwell NVFP4 work should not start until more credit is available; it has a different tuple family and likely a higher hourly rate.
+
 | Instance | GPU | Resolution | Invoice cost | Notes |
 | ---: | --- | --- | ---: | --- |
 | `37170799` | `H200` | `320x576` | `$1.681` | passed realtime |
@@ -258,7 +291,7 @@ Cost interpretation:
 
 LongLive2 SP is the experimental one-stream two-GPU path.
 It should be costed differently from Scope because the first useful test may include source builds, extension builds, model downloads, and R2 tuple publish.
-Local plumbing is implemented, but no paid LongLive2 GPU run has been launched yet.
+Local plumbing is implemented. The paid H200 x2 ladder has now produced one successful cold BF16 SP render, published the tuple to R2, and attempted one fresh restore validation. The restore validation fetched/extracted the tuple but failed before render on a missing restored Wan symlink; the restore script now patches that path. All paid runs pulled logs locally and tore down cleanly.
 
 Known anchor:
 
@@ -279,12 +312,12 @@ LongLive2 first-run budgeting:
 
 1. no-cost dry-runs must produce the exact `torchrun` command and config before launch;
 2. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` should pass before paid launch;
-3. first paid BF16 SP smoke should use explicit modest geometry (`480x832`, `32` frames) and cap wall-clock around `45 min`;
+3. cold BF16 SP build/publish smokes should use explicit modest geometry (`480x832`, `32` frames); use about `45 min` for render-only bring-up or `60 min` when also attempting R2 publish before teardown;
 4. the wrapper now writes `selected_offer.json`, `credit_check.json`, `budget_plan.json`, and `phase_report.json` for spend analysis;
 5. the default planned spend gate is `45 min` at `<= $8/h`, capped at about `$6.00` before storage/operation noise;
-6. a successful build should publish the tuple to R2 before teardown so future runs pay restore time, not rebuild time;
+6. the current BF16 SP tuple is already published, so the next paid run should validate restore with no HF download fallback;
 7. a published tuple is not a validated restore tuple until a fresh instance restores it and renders again;
-8. a failed import/build should still pull logs locally before teardown unless SSH never became reachable;
+8. a failed import/build/restore should still pull logs locally before teardown unless SSH never became reachable;
 9. do not keep an instance alive just to preserve a loaded process;
 10. promote two-GPU SP only if one-stream speedup justifies the extra hourly rate.
 

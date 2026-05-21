@@ -26,6 +26,7 @@ EXTRACT_WEIGHTS="${EXTRACT_WEIGHTS:-0}"
 APPLY_WEIGHTS_TARGET="${APPLY_WEIGHTS_TARGET:-}"
 LOAD_IMAGE="${LOAD_IMAGE:-1}"
 TIER="${TIER:-}"
+LONGLIVE2_REQUIRE_WAN_RESTORE_LINK="${LONGLIVE2_REQUIRE_WAN_RESTORE_LINK:-1}"
 
 usage() {
   cat <<'EOF'
@@ -251,6 +252,37 @@ PY
   fi
 }
 
+post_restore_model_hooks() {
+  if [[ "${VIDEO_MODEL}" != "longlive2" ]]; then
+    return
+  fi
+  if [[ "${EXTRACT_WEIGHTS}" != "1" ]]; then
+    return
+  fi
+
+  local weights_root="${APPLY_WEIGHTS_TARGET:-${SCRIPT_DIR}/.cache/longlive2}"
+  local longlive2_src="${SCRIPT_DIR}/.vendors/LongLive2"
+  if [[ -n "${APPLY_VENV_TARGET}" ]]; then
+    longlive2_src="$(cd -- "$(dirname -- "${APPLY_VENV_TARGET}")" && pwd)"
+  fi
+
+  local wan_dir="${weights_root}/wan_models/Wan2.2-TI2V-5B"
+  local wan_required_file="${wan_dir}/models_t5_umt5-xxl-enc-bf16.pth"
+  if [[ ! -f "${wan_required_file}" ]]; then
+    if [[ "${LONGLIVE2_REQUIRE_WAN_RESTORE_LINK}" == "1" ]]; then
+      echo "[error] restored LongLive2 cache is missing required Wan asset: ${wan_required_file}" >&2
+      return 1
+    fi
+    echo "[restore] LongLive2 Wan asset missing; skipping runtime wan_models link." >&2
+    return
+  fi
+
+  mkdir -p "${longlive2_src}/wan_models"
+  rm -rf "${longlive2_src}/wan_models/Wan2.2-TI2V-5B"
+  ln -sfn "${wan_dir}" "${longlive2_src}/wan_models/Wan2.2-TI2V-5B"
+  echo "[restore] linked LongLive2 Wan assets into ${longlive2_src}/wan_models/Wan2.2-TI2V-5B"
+}
+
 restore_tuple_from() {
   local out_dir="$1"
   local env_archive
@@ -284,6 +316,8 @@ restore_tuple_from() {
       echo "[restore] weights extracted to ${OUT_WEIGHTS}"
     fi
   fi
+
+  post_restore_model_hooks
 }
 
 restored_mode=""

@@ -1,6 +1,7 @@
 # Secrets / instance configs (do not commit)
 ssh_*.json
 **/ssh_*.json
+*.env
 config/prime.env
 config/prime.env.bak*
 config/vast.env

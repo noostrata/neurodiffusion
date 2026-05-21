@@ -32,7 +32,8 @@ Definitions:
 | 3 | Causal Forcing++ direct backend | Strong 1-step/2-step AR research path; needs custom adapter | unknown |
 | 4 | Krea Realtime 14B | Higher quality, heavier runtime; test after Scope control is proven | `~0.94+` 5090, B200 much higher |
 | 5 | MAGI-1 4.5B/24B | Async or chunked high-quality background renderer | A100/Hopper dependent |
-| 6 | LongLive2 sequence-parallel BF16 direct backend | Restore-validated and mechanically works, but H100 NVL x2 `sp2` was slower than `sp1` (`0.663945x`), so keep it offline/research-only unless Blackwell/NVFP4 changes the result | two-GPU Vast rates |
+| 6 | LongLive2 RTX 5090 NVFP4 direct backend | Next research test: one-GPU `nvfp4_s2` on SM120; only promote if wall-clock render FPS reaches realtime | latest preflight selected `$0.935/h` |
+| 7 | LongLive2 sequence-parallel BF16 direct backend | Restore-validated and mechanically works, but H100 NVL x2 `sp2` was slower than `sp1` (`0.663945x`), so keep it offline/research-only | two-GPU Vast rates |
 
 ## Attention/backend policy
 

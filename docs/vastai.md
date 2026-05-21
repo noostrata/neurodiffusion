@@ -418,16 +418,22 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
 
 Do not add `--download-fallback` to this benchmark; the point is to measure the validated R2 tuple path plus `sp1`/`sp2` speedup. The latest H100 NVL x2 result failed the speedup gate, so do not rerun automatically for live-path work.
 
-Blackwell NVFP4 shape, only after the BF16 SP path is proven or when explicitly targeting Blackwell:
+Blackwell NVFP4 RTX 5090 shape, after explicit budget approval:
 
 ```bash
 bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh \
   --create-instance \
-  --gpu-regex 'B200|GB200|RTX.?5090' \
-  --runtime-tag longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1 \
-  --profile nvfp4_s2 \
-  --frames 384
+  --blackwell-tier sm120 \
+  --blackwell-cold-build \
+  --height 480 \
+  --width 832 \
+  --frames 32 \
+  --max-alive-min 90 \
+  --budget-estimate-min 90 \
+  --max-estimated-spend-usd 3.00
 ```
+
+This uses RTX 5090 x1 / SM120, not B200/GB200. Use SM100 only for a one-GPU B200/GB200 listing; do not rent an x8 B200/GB200 host for the LongLive2 Blackwell smoke.
 
 ## Persistence
 

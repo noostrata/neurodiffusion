@@ -20,6 +20,7 @@ LONGLIVE2_RUN_DIR="${LONGLIVE2_RUN_DIR:-${SCRIPT_DIR}/.tmp/${LONGLIVE2_RUN_ID}}"
 LONGLIVE2_CONFIG_PATH="${LONGLIVE2_CONFIG_PATH:-${LONGLIVE2_RUN_DIR}/longlive2_inference.yaml}"
 LONGLIVE2_PROMPT_PATH="${LONGLIVE2_PROMPT_PATH:-${LONGLIVE2_RUN_DIR}/prompt.txt}"
 LONGLIVE2_OUTPUT_DIR="${LONGLIVE2_OUTPUT_DIR:-${LONGLIVE2_RUN_DIR}/videos}"
+LONGLIVE2_RUN_TIMING_JSON="${LONGLIVE2_RUN_TIMING_JSON:-${LONGLIVE2_RUN_DIR}/run_timing.json}"
 LONGLIVE2_PROMPT="${LONGLIVE2_PROMPT:-A reactive neon tunnel breathes with smooth cinematic motion.}"
 LONGLIVE2_SCHEDULE_CSV="${LONGLIVE2_SCHEDULE_CSV:-}"
 LONGLIVE2_SHOT_PROMPTS="${LONGLIVE2_SHOT_PROMPTS:-}"
@@ -378,6 +379,12 @@ if command_exists nvidia-smi; then
 fi
 
 video_log "Launching LongLive2 ${ENTRYPOINT} with nproc=${NPROC}."
+run_start_epoch="$(python3 - <<'PY'
+import time
+print(f"{time.time():.6f}")
+PY
+)"
+set +e
 (
   cd "${LONGLIVE2_SRC_DIR}"
   if [[ -n "${LONGLIVE2_CUDA_VISIBLE_DEVICES}" ]]; then
@@ -390,5 +397,37 @@ video_log "Launching LongLive2 ${ENTRYPOINT} with nproc=${NPROC}."
     "${PY}" "${ENTRYPOINT}" --config_path "${LONGLIVE2_CONFIG_PATH}"
   fi
 ) 2>&1 | tee "${RUN_LOG}"
+run_rc="${PIPESTATUS[0]}"
+set -e
+run_end_epoch="$(python3 - <<'PY'
+import time
+print(f"{time.time():.6f}")
+PY
+)"
+python3 - "${LONGLIVE2_RUN_TIMING_JSON}" "${run_start_epoch}" "${run_end_epoch}" "${LONGLIVE2_FRAMES}" "${run_rc}" <<'PY'
+import json
+import sys
+from pathlib import Path
 
-python3 "${SCRIPT_DIR}/longlive2_run_report.py" report --run-dir "${LONGLIVE2_RUN_DIR}" --config "${LONGLIVE2_CONFIG_PATH}"
+out, start, end, frames, rc = sys.argv[1:]
+start_f = float(start)
+end_f = float(end)
+frames_i = int(frames)
+elapsed = max(0.0, end_f - start_f)
+payload = {
+    "run_start_epoch_s": start_f,
+    "run_end_epoch_s": end_f,
+    "wall_elapsed_s": round(elapsed, 6),
+    "frames": frames_i,
+    "wall_render_fps": round(frames_i / elapsed, 6) if elapsed > 0 else None,
+    "exit_code": int(rc),
+}
+Path(out).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+
+report_rc=0
+python3 "${SCRIPT_DIR}/longlive2_run_report.py" report --run-dir "${LONGLIVE2_RUN_DIR}" --config "${LONGLIVE2_CONFIG_PATH}" || report_rc=$?
+if [[ "${run_rc}" -ne 0 ]]; then
+  exit "${run_rc}"
+fi
+exit "${report_rc}"

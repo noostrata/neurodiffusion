@@ -336,6 +336,7 @@ def write_report(args: argparse.Namespace) -> int:
     artifact_qa_path.write_text(json.dumps(artifact_qa, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     launch_plan = load_json(run_dir / "launch_plan.json")
+    run_timing = load_json(run_dir / "run_timing.json")
     gpu_telemetry = parse_gpu_telemetry(run_dir / "gpu_telemetry.csv")
     acceptance = {
         "require_video": not args.allow_missing_video,
@@ -346,6 +347,8 @@ def write_report(args: argparse.Namespace) -> int:
         "artifact_nonblank_ok": bool(artifact_qa.get("nonblank_ok")) or args.allow_missing_video or bool(
             artifact_qa.get("luma_samples", {}).get("error")
         ),
+        "wall_fps_ok": args.min_wall_fps <= 0
+        or (_float_or_none(run_timing.get("wall_render_fps")) or 0.0) >= args.min_wall_fps,
     }
     acceptance["passed"] = all(
         acceptance[key]
@@ -355,6 +358,7 @@ def write_report(args: argparse.Namespace) -> int:
             "sp_marker_present",
             "telemetry_present",
             "artifact_nonblank_ok",
+            "wall_fps_ok",
         )
     )
 
@@ -363,6 +367,7 @@ def write_report(args: argparse.Namespace) -> int:
         "run_dir": str(run_dir),
         "config_path": str(config_path),
         "launch_plan": launch_plan,
+        "run_timing": run_timing,
         "torchrun_log": log,
         "gpu_telemetry": gpu_telemetry,
         "videos": [str(path) for path in videos],
@@ -452,6 +457,7 @@ def command_selftest() -> int:
             qa_sample_count=3,
             allow_missing_video=True,
             allow_missing_telemetry=False,
+            min_wall_fps=0.0,
         )
         rc = write_report(args)
         report = load_json(run_dir / "run_report.json")
@@ -504,6 +510,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--qa-sample-count", type=int, default=5)
     report.add_argument("--allow-missing-video", action="store_true")
     report.add_argument("--allow-missing-telemetry", action="store_true")
+    report.add_argument("--min-wall-fps", type=float, default=0.0)
     report.set_defaults(func=write_report)
 
     phase = sub.add_parser("phase-report", help="Write a wrapper phase/cost report")

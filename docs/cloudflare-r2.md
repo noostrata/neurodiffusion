@@ -405,6 +405,8 @@ Tuple tag families:
 - `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1`
 - `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1`
 
+The next planned LongLive2 publish target is the SM120 RTX 5090 tuple. It should only be published after a successful `nvfp4_s2` render with local artifact pullback, and it should only become `validated_restore_tuple` after a separate fresh restore render.
+
 R2 keys:
 
 - `neurodiffusion/env-cache/<longlive2_runtime_tag>/`

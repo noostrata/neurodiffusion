@@ -142,7 +142,7 @@ Required config edits:
 
 ### Lane B: NVFP4 Blackwell Maximum-Performance Path
 
-Purpose: chase maximum FPS and resolution after the distributed path works.
+Purpose: test the native Blackwell NVFP4 speed path without spending on multi-GPU B200/GB200 hosts.
 
 Expected tuple families:
 
@@ -153,8 +153,8 @@ longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1
 
 Use this lane on Blackwell-class hosts first because this is the hardware lane that the paper says can actually accelerate low-bit NVFP4 inference:
 
-1. B200 / GB200 / GB300: build with `CUDA_ARCHS=100`.
-2. RTX 50/60 class: build with `CUDA_ARCHS=120` only if Vast offers are reliable and CUDA `12.8` support is clean.
+1. RTX 5090: build with `CUDA_ARCHS=120`; this is the current first paid target because one-GPU 5090 offers are available around the low-dollar-per-hour range.
+2. B200 / GB200 / GB300: build with `CUDA_ARCHS=100`; use only a one-GPU listing and do not rent an x8 host for this lane.
 
 Do not use this as the first H100/H200 path.
 For Hopper, Lane A is the paper-compatible compensation path: BF16 sequence-parallel inference.
@@ -189,6 +189,7 @@ Implemented files:
    - creates an ignored runtime env file under `VideoDiffusion/.longlive2_runtime.env`;
    - supports `--skip-build` for cheap clone/config steps;
    - supports BF16 and NVFP4 profile setup, including FourOverSix and pinned flash-attention source build for NVFP4;
+   - auto-detects `CUDA_ARCHS=120` for RTX 5090 and `CUDA_ARCHS=100` for B200/GB200 when building NVFP4 extensions;
    - pins `transformers==4.57.3` by default and verifies the `x_clip_loss` import that upstream LongLive2 expects;
    - installs `decord` as an extra dependency until upstream requirements include it.
 2. `VideoDiffusion/download_longlive2_models.sh`
@@ -207,10 +208,12 @@ Implemented files:
    - runs an offline render through `torchrun`;
    - supports `sp_size * dp_size` process count;
    - writes config, launch plan, torchrun log, GPU telemetry, report JSON, artifact QA, and contact sheet;
+   - writes `run_timing.json` with wall-clock render FPS so realtime claims use generation speed rather than MP4 playback FPS;
    - accepts `--seed` so `sp1` and `sp2` comparisons can hold the seed fixed.
 5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh`
-   - provisions a two-GPU Vast host only when `--create-instance` is passed;
-   - selects offers with `--min-gpu-count 2 --max-gpu-count 2`;
+   - provisions a Vast host only when `--create-instance` is passed;
+   - defaults to Hopper two-GPU SP, but `--blackwell-tier sm120` switches to RTX 5090 x1 `nvfp4_s2`;
+   - `--blackwell-cold-build` skips R2 restore and publishes a new NVFP4 tuple after a successful render;
    - supports `--preflight` for no-spend local checks, dry-run, offer selection, active-instance check, credit check, and budget gate;
    - writes sanitized selected-offer, credit, budget, phase-marker, and phase-report artifacts;
    - enforces `--max-alive-min` around paid remote SSH phases;
@@ -218,7 +221,7 @@ Implemented files:
    - attempts best-effort artifact pullback before teardown even when setup/download/render fails;
    - restores R2 tuple when available;
    - build/download fallback only when explicitly allowed;
-   - runs one short SP inference;
+   - runs one short inference through `inference.py` for one-GPU Blackwell or `inference_sp.py` for multi-rank SP;
    - can publish the env/cache tuple before teardown with `--publish-r2-on-success` after a successful render;
    - pulls local MP4, logs, config, phase telemetry, and GPU telemetry;
    - tears down by default.
@@ -231,13 +234,14 @@ Implemented files:
    - parses per-GPU utilization;
    - reads `ffprobe` metadata when output exists;
    - generates contact sheet and nonblank artifact QA when possible;
+   - includes `run_timing.json` in `run_report.json`;
    - parses wrapper phase markers into phase/cost reports.
 8. R2 dispatch updates:
    - `--model longlive2` is supported in `VideoDiffusion/publish_r2_prebuild_model.sh`;
    - `--model longlive2` is supported in `VideoDiffusion/restore_r2_prebuild_model.sh`;
    - default tuple tiers are `longlive2-bf16-sp-hopper,longlive2-nvfp4-blackwell`.
 9. Vast selector updates:
-   - `scripts/vast/query_video_offers.py --model longlive2` targets two-GPU datacenter CUDA 12.8 hosts;
+   - `scripts/vast/query_video_offers.py --model longlive2` can find one-GPU Blackwell offers; the wrapper can also pass a relaxed RTX 5090 query;
    - `scripts/vast/select_video_offer.py` handles `sm90`, `sm100`, and `sm120` runtime tags;
    - SP smoke defaults to two GPUs and logs GPU names plus telemetry.
 
@@ -417,8 +421,8 @@ Decision rule:
 
 Goal: maximize realtime FPS and resolution.
 
-Start with B200/GB200 before cheaper RTX 50/60 offers because the upstream NVFP4 path documents `CUDA_ARCHS=100` explicitly.
-Only test RTX 50/60 after the SM100 lane is validated or if budget demands a cheaper Blackwell attempt.
+Start with RTX 5090 / SM120 because current Vast scans found one-GPU 5090 offers, while the only B200 match was an x8 listing that should not be used for this test.
+Keep the SM100 path available for a future one-GPU B200/GB200 listing.
 
 Acceptance:
 
@@ -427,6 +431,7 @@ Acceptance:
 3. S2 checkpoint loads with `sampling_steps: 2`.
 4. output quality is not obviously degraded relative to BF16/4-step for the same prompt.
 5. throughput is high enough to justify the higher setup complexity.
+6. wall-clock render FPS from `run_timing.json` is `>=24` before calling it realtime; MP4 playback FPS alone does not count.
 
 ## Live EEG Integration Plan
 

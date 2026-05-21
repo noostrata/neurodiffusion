@@ -161,6 +161,45 @@ def test_sm120_runtime_tag_filters_to_5090() -> None:
     assert selected["selected_offer"]["offer_id"] == "rtx5090"
 
 
+def test_sm100_runtime_tag_accepts_gb200() -> None:
+    selected = _select(
+        {
+            "model": "longlive2",
+            "offers": [
+                {"offer_id": "h200", "gpu_name": "H200", "num_gpus": 1, "dph_total": 3.1},
+                {"offer_id": "gb200", "gpu_name": "GB200", "num_gpus": 1, "dph_total": 9.5},
+            ],
+        },
+        selection_goal="realtime",
+        min_gpu_count=1,
+        max_gpu_count=1,
+        max_dph=12.0,
+        runtime_tag="longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1",
+        allow_runtime_gpu_mismatch=False,
+    )
+    assert selected["selected_offer"]["offer_id"] == "gb200"
+
+
+def test_blackwell_5090_one_gpu_cost_selection() -> None:
+    selected = _select(
+        {
+            "model": "longlive2",
+            "offers": [
+                {"offer_id": "rtx5090-expensive", "gpu_name": "RTX 5090", "num_gpus": 1, "dph_total": 1.7},
+                {"offer_id": "rtx5090-cheap", "gpu_name": "RTX 5090", "num_gpus": 1, "dph_total": 1.1},
+                {"offer_id": "rtx5090x2", "gpu_name": "RTX 5090", "num_gpus": 2, "dph_total": 2.0},
+            ],
+        },
+        selection_goal="cost",
+        min_gpu_count=1,
+        max_gpu_count=1,
+        max_dph=2.5,
+        runtime_tag="longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1",
+        allow_runtime_gpu_mismatch=False,
+    )
+    assert selected["selected_offer"]["offer_id"] == "rtx5090-cheap"
+
+
 def main() -> int:
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

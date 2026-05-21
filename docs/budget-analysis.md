@@ -266,8 +266,23 @@ Budget implication:
 1. The H100 NVL x2 benchmark fit inside the `45 min` cap at about `$1.437`.
 2. Current credit after the benchmark was about `$17.385469`; active instances were `[]`.
 3. Do not spend more on Hopper BF16 SP live-runner work unless deliberately rerunning for research; the measured speedup fails the live threshold.
-4. Blackwell NVFP4 work should not start without explicit budget approval; it has a different tuple family and likely a higher hourly rate.
+4. Blackwell NVFP4 work should not start without explicit budget approval; it has a different tuple family and build path.
 5. Local storage is no longer a budget concern for historical media: `artifacts/` is about `5.5M`, with telemetry retained and intentional proof MP4/contact sheets kept.
+
+Blackwell no-spend scan for the next LongLive2 target:
+
+| Scan | Result |
+| --- | --- |
+| strict one-GPU datacenter `B200/GB200/RTX 5090` | `0` offers |
+| relaxed `B200/GB200` | only `B200 x8` at about `$71.80/h`; do not use for this one-GPU test |
+| relaxed `RTX 5090 x1` | multiple offers; preflight selected offer `35949631` at `$0.9351851851851851/h` |
+
+Budget implication:
+
+1. The next paid LongLive2 Blackwell test should target `RTX 5090 x1` / SM120 first.
+2. Use `--max-estimated-spend-usd 3.00` and a `90 min` cap for the cold build/download/render/publish path; the latest preflight planned `$1.402778`.
+3. Use a one-GPU B200/GB200 only if a sane one-GPU offer appears; do not rent B200/GB200 x8 for this experiment.
+4. Judge success with wall-clock render FPS from `run_timing.json`, not MP4 playback FPS.
 
 Latest no-spend readiness check:
 
@@ -318,7 +333,7 @@ Cost interpretation:
 
 ### Vast LongLive2 SP cost controls (2026-05-21)
 
-LongLive2 SP is the experimental one-stream two-GPU path.
+LongLive2 SP is the experimental one-stream two-GPU Hopper path; LongLive2 Blackwell NVFP4 is the separate one-GPU speed path.
 It should be costed differently from Scope because the first useful test may include source builds, extension builds, model downloads, and R2 tuple publish.
 Local plumbing is implemented. The paid H100/H200 x2 ladder has now produced one successful cold BF16 SP render, published the tuple to R2, and validated a fresh R2 restore/render on H100 NVL x2. All paid runs tore down cleanly; successful runs pulled local video/log artifacts.
 
@@ -349,6 +364,14 @@ LongLive2 first-run budgeting:
 8. a failed import/build/restore should still pull logs locally before teardown unless SSH never became reachable;
 9. do not keep an instance alive just to preserve a loaded process;
 10. promote two-GPU SP only if one-stream speedup justifies the extra hourly rate.
+
+LongLive2 Blackwell RTX 5090 budgeting:
+
+1. command shape: `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --blackwell-tier sm120 --blackwell-cold-build`;
+2. selected offers must be `RTX 5090 x1`, not two-GPU listings;
+3. default planned cap: `90 min`;
+4. default spend ceiling: `$3.00`, which fits the current `$17.385469` credit snapshot;
+5. if cold build succeeds and publishes R2, run a separate short restore validation before treating the tuple as reusable.
 
 Two-GPU decision metric:
 

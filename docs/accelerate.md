@@ -127,15 +127,15 @@ Planned tuple families:
 | Lane | Runtime tag | First GPU target | Purpose |
 | --- | --- | --- | --- |
 | BF16 SP | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | `H100/H200 x2` | prove one-stream two-rank inference |
-| NVFP4 S2 SM100 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1` | `B200/GB200 x1-2` | maximum speed path |
-| NVFP4 S2 SM120 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` | `RTX 50/60 x1-2` | cheaper Blackwell candidate after SM100 proof |
+| NVFP4 S2 SM100 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1` | `B200/GB200 x1 only` | maximum speed path if a sane one-GPU offer appears |
+| NVFP4 S2 SM120 | `longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1` | `RTX 5090 x1` | current Blackwell test target |
 
 Current LongLive2 acceleration order:
 
 1. Use the existing BF16 SP R2 tuple as the validated Hopper restore path.
 2. Stop treating Hopper BF16 SP as a live path because same-seed `sp_size=2` was slower than `sp_size=1`.
-3. Keep Scope/LongLive as the realtime EEG path.
-4. Defer NVFP4 until Blackwell budget exists or a new upstream/runtime change justifies that lane.
+3. Test the one-GPU RTX 5090 / SM120 `nvfp4_s2` lane before any B200/GB200 spend above one GPU.
+4. Keep Scope/LongLive as the realtime EEG path until a Blackwell LongLive2 run proves `>=24` wall-clock render FPS.
 
 Latest H200 x2 BF16 SP result:
 
@@ -173,7 +173,7 @@ Implemented local plumbing:
 2. `VideoDiffusion/download_longlive2_models.sh` caches BF16, NVFP4 S4, or NVFP4 S2 checkpoints, downloads/links Wan2.2 base assets by default, and uses Python `huggingface_hub` fallback when no HF CLI binary is installed.
 3. `VideoDiffusion/longlive2_config.py` generates SP configs and converts EEG schedule CSVs into upstream multi-shot prompt folders.
 4. `VideoDiffusion/run_longlive2_sp_offline.sh` creates a launch plan, starts `torchrun`, records GPU telemetry, and invokes report/QA generation.
-5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` wraps two-GPU Vast selection, credit/budget checks, R2 restore/download, transfer retries, smoke or benchmark-only execution, optional publish-on-success, local pullback, phase/cost reports, and teardown.
+5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` wraps Vast selection, credit/budget checks, R2 restore/download, transfer retries, smoke or benchmark-only execution, optional publish-on-success, local pullback, phase/cost reports, and teardown; `--blackwell-tier sm120` applies one-GPU RTX 5090 NVFP4 defaults.
 6. `VideoDiffusion/run_longlive2_sp_benchmark.sh` runs same-prompt/same-seed `sp_size=1` vs `sp_size=2` comparisons and writes `speedup_sp2_over_sp1`.
 7. `VideoDiffusion/longlive2_run_report.py` parses SP logs, GPU telemetry, ffprobe metadata, artifact QA, and wrapper phase markers.
 
@@ -190,7 +190,7 @@ Validation order from here:
 
 1. no-cost config/report selftests;
 2. keep Scope/LongLive as the realtime path;
-3. only run NVFP4 S2 import/render smoke with explicit Blackwell budget;
+3. run `--blackwell-tier sm120 --blackwell-cold-build --preflight` before any paid RTX 5090 launch;
 4. live LongLive2 runner only after a future distributed lane shows useful speedup.
 
 See `docs/video-longlive2-sp-streaming.md` for the full plan.

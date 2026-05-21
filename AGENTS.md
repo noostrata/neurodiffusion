@@ -142,6 +142,7 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - Keep the LongLive2 default `transformers` pin conservative. Upstream requirements are broad, but paid validation showed `transformers==5.9.0` broke `x_clip_loss`; `setup_longlive2.sh` now pins `4.57.3` and verifies that import.
 - Keep `decord` in the LongLive2 extra package list unless upstream requirements add it; paid validation showed upstream imports it without installing it.
 - NVFP4 acceleration is Blackwell-only per the LongLive2 paper limitation. On A100/H100/H200, use `bf16_sp` sequence-parallel inference as the compensation path unless intentionally debugging NVFP4/FourOverSix.
+- The next LongLive2 Blackwell test target is `RTX 5090 x1` / `sm120` with `nvfp4_s2`, `sp_size=1`, `dp_size=1`, and `sampling_steps=2`. Do not rent more than one B200/GB200 for this lane; only use B200/GB200 if a sane one-GPU offer appears.
 - The upstream SP script disables `kv_quant` under Ulysses SP today; do not claim SP+KV-quant speedups unless a real run proves them.
 - A valid LongLive2 two-card run must show one output stream plus per-GPU telemetry proving both cards were active.
 - Latest cold LongLive2 two-card run succeeded on H200 x2 and published `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` to R2.
@@ -152,10 +153,12 @@ Local-only failures such as missing `VideoDiffusion/MAGI-1/example/4.5B/...` usu
 - Use `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --publish-r2-on-success` when the intent is to publish the first reusable tuple before teardown after a successful render.
 - Latest LongLive2 H100 NVL x2 benchmark-only run restored once, ran same-seed `sp1`/`sp2`, pulled artifacts, and tore down cleanly. Result: `sp2` was slower than `sp1` (`speedup_sp2_over_sp1=0.663945`), so do not build the persistent LongLive2 live runner for the Hopper BF16 SP path.
 - R2 may cache the LongLive2 env, built extensions, checkpoints, and generated merged/materialized checkpoints; it cannot preserve a live NCCL process group or GPU-resident model.
+- `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --blackwell-tier sm120 --blackwell-cold-build` is the planned RTX 5090 NVFP4 cold-build path; it sets one-GPU `nvfp4_s2` defaults, `CUDA_ARCHS=120`, relaxed one-GPU offer search, and Blackwell R2 publish metadata.
+- Blackwell success must be judged by wall-clock render FPS from `run_timing.json` / `run_report.json`, not MP4 playback FPS.
 - Run `VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight` before paid LongLive2 work; it should pass local checks, dry-run, offer selection, active-instance, credit, and budget gates.
 - First LongLive2 paid smoke defaults should stay small and explicit: `480x832`, `32` frames, `sp_size=2`, `dp_size=1`, `seed=0`, max-alive around `45 min` for render-only or `60 min` when publishing R2 before teardown, and failure-safe artifact pullback enabled by default.
 - EEG integration comes after distributed inference is proven: offline prompt schedule first, persistent runner second, live output third.
-- Paid LongLive2 tests must use explicit two-GPU selection and teardown by default.
+- Paid Hopper BF16 LongLive2 tests must use explicit two-GPU selection and teardown by default. Paid Blackwell NVFP4 tests must use explicit one-GPU selection and teardown by default.
 - `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` retries idempotent repo upload, R2 secret upload, and artifact pullback phases because Vast direct SSH can briefly refuse connections after first auth readiness.
 - Keep Scope/LongLive as the default realtime EEG path; LongLive2 BF16 SP remains offline/research-only unless a future Blackwell/NVFP4 or upstream-runtime change proves useful speedup.
 

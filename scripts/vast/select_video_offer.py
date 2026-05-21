@@ -14,6 +14,7 @@ from typing import Any
 
 
 GPU_RANKS = [
+    (re.compile(r"GB200|GB300|B300", re.IGNORECASE), 0),
     (re.compile(r"B200", re.IGNORECASE), 1),
     (re.compile(r"H200|GH200", re.IGNORECASE), 2),
     (re.compile(r"H100", re.IGNORECASE), 3),
@@ -28,7 +29,7 @@ RUNTIME_ARCH_GPU_REGEX = {
     "sm86": re.compile(r"A6000|RTX.?6000", re.IGNORECASE),
     "sm89": re.compile(r"L40S|RTX.?4090", re.IGNORECASE),
     "sm90": re.compile(r"H100|H200|GH200", re.IGNORECASE),
-    "sm100": re.compile(r"B200", re.IGNORECASE),
+    "sm100": re.compile(r"GB200|GB300|B300|B200", re.IGNORECASE),
     "sm120": re.compile(r"RTX.?5090", re.IGNORECASE),
 }
 

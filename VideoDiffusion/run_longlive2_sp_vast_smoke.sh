@@ -27,6 +27,7 @@ KEEP_INSTANCE="${LONGLIVE2_VAST_KEEP_INSTANCE:-0}"
 DESTROY_ON_EXIT="${LONGLIVE2_VAST_DESTROY_ON_EXIT:-}"
 OFFER_ID="${VAST_OFFER_ID:-}"
 GPU_REGEX="${LONGLIVE2_VAST_GPU_REGEX:-H200|H100|GH200|B200|GB200}"
+OFFER_QUERY="${LONGLIVE2_VAST_OFFER_QUERY:-}"
 MIN_GPU_COUNT="${LONGLIVE2_VAST_MIN_GPU_COUNT:-2}"
 MAX_GPU_COUNT="${LONGLIVE2_VAST_MAX_GPU_COUNT:-2}"
 MAX_DPH="${LONGLIVE2_VAST_MAX_DPH:-8.00}"
@@ -45,6 +46,7 @@ MAX_ESTIMATED_SPEND_USD="${LONGLIVE2_VAST_MAX_ESTIMATED_SPEND_USD:-6.00}"
 REQUIRE_CREDIT_CHECK="${LONGLIVE2_VAST_REQUIRE_CREDIT_CHECK:-1}"
 
 LONGLIVE2_PROFILE="${LONGLIVE2_PROFILE:-bf16_sp}"
+LONGLIVE2_CUDA_ARCHS="${LONGLIVE2_CUDA_ARCHS:-}"
 LONGLIVE2_HEIGHT="${LONGLIVE2_HEIGHT:-480}"
 LONGLIVE2_WIDTH="${LONGLIVE2_WIDTH:-832}"
 LONGLIVE2_FRAMES="${LONGLIVE2_FRAMES:-32}"
@@ -63,6 +65,7 @@ RUN_SMOKE="${LONGLIVE2_VAST_RUN_SMOKE:-1}"
 RUN_BENCHMARK="${LONGLIVE2_VAST_RUN_BENCHMARK:-0}"
 PUBLISH_R2_ON_SUCCESS="${LONGLIVE2_VAST_PUBLISH_R2_ON_SUCCESS:-0}"
 PUBLISH_INCLUDE_WEIGHTS="${LONGLIVE2_VAST_PUBLISH_INCLUDE_WEIGHTS:-1}"
+PUBLISH_TIERS="${LONGLIVE2_VAST_PUBLISH_TIERS:-longlive2-bf16-sp-hopper}"
 PUBLISH_ENV_COMPRESSION="${LONGLIVE2_VAST_PUBLISH_ENV_COMPRESSION:-zstd}"
 PUBLISH_WEIGHTS_COMPRESSION="${LONGLIVE2_VAST_PUBLISH_WEIGHTS_COMPRESSION:-none}"
 PUBLISH_BUILD_GPU_CLASS="${LONGLIVE2_VAST_PUBLISH_BUILD_GPU_CLASS:-hopper-sm90}"
@@ -87,6 +90,7 @@ Options:
   --instance-id <id>            Use an existing Vast instance
   --offer-id <id>               Use an explicit Vast offer id when creating
   --gpu-regex <regex>           Offer GPU filter (default: ${GPU_REGEX})
+  --offer-query <query>         Override the Vast search query before local GPU filtering
   --min-gpu-count <count>       Minimum GPUs in selected offer (default: ${MIN_GPU_COUNT})
   --max-gpu-count <count>       Maximum GPUs in selected offer; 0 disables limit (default: ${MAX_GPU_COUNT})
   --max-dph <usd>               Max selected hourly rate (default: ${MAX_DPH})
@@ -102,6 +106,10 @@ Options:
   --runtime-tag <tag>           R2 LongLive2 runtime tuple (default: ${RUNTIME_TAG})
   --profile <bf16_sp|nvfp4_s4|nvfp4_s2>
                                   LongLive2 profile (default: ${LONGLIVE2_PROFILE})
+  --blackwell-tier <sm120|sm100>
+                                  Apply one-GPU NVFP4 defaults for RTX 5090 (sm120) or B200/GB200 (sm100)
+  --blackwell-cold-build        Skip R2 restore and publish the NVFP4 tuple after a successful render
+  --cuda-archs <archs>          CUDA_ARCHS passed to LongLive2 NVFP4 extension builds
   --height <pixels>             Output height, divisible by 16 (default: ${LONGLIVE2_HEIGHT})
   --width <pixels>              Output width, divisible by 16 (default: ${LONGLIVE2_WIDTH})
   --frames <count>              Output frames, divisible by 8 (default: ${LONGLIVE2_FRAMES})
@@ -132,6 +140,51 @@ Options:
 EOF
 }
 
+apply_blackwell_tier() {
+  local tier="$1"
+  case "${tier}" in
+    sm120|rtx5090|5090)
+      RUNTIME_TAG="longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm120_prebuild1"
+      GPU_REGEX="RTX.?5090"
+      OFFER_QUERY="verified=True reliability>0.98 rentable=True num_gpus>=1 gpu_ram>=24 disk_space>300 disk_bw>500 inet_up>200 inet_down>200 direct_port_count>=2 cuda_max_good>=12.8"
+      MAX_DPH="2.50"
+      MIN_CREDIT_USD="4.00"
+      MIN_CREDIT_RESERVE_USD="0.50"
+      MAX_ESTIMATED_SPEND_USD="3.00"
+      PUBLISH_BUILD_GPU_CLASS="blackwell-sm120"
+      PUBLISH_VALIDATED_PROFILES="longlive2_nvfp4_s2_sm120_offline_smoke"
+      LONGLIVE2_CUDA_ARCHS="120"
+      ;;
+    sm100|b200|gb200)
+      RUNTIME_TAG="longlive2_nvfp4_s2_py312_torch2.10.0_cu128_sm100_prebuild1"
+      GPU_REGEX="GB200|GB300|B300|B200"
+      OFFER_QUERY="verified=True reliability>0.98 rentable=True num_gpus>=1 gpu_ram>=80 disk_space>300 disk_bw>500 inet_up>200 inet_down>200 direct_port_count>=2 cuda_max_good>=12.8"
+      MAX_DPH="12.00"
+      MIN_CREDIT_USD="14.00"
+      MIN_CREDIT_RESERVE_USD="1.00"
+      MAX_ESTIMATED_SPEND_USD="12.00"
+      PUBLISH_BUILD_GPU_CLASS="blackwell-sm100"
+      PUBLISH_VALIDATED_PROFILES="longlive2_nvfp4_s2_sm100_offline_smoke"
+      LONGLIVE2_CUDA_ARCHS="100"
+      ;;
+    *)
+      echo "[error] unsupported Blackwell tier '${tier}'; use sm120 or sm100." >&2
+      exit 1
+      ;;
+  esac
+  LONGLIVE2_PROFILE="nvfp4_s2"
+  LONGLIVE2_SP_SIZE="1"
+  LONGLIVE2_DP_SIZE="1"
+  LONGLIVE2_SAMPLING_STEPS="${LONGLIVE2_SAMPLING_STEPS:-2}"
+  MIN_GPU_COUNT="1"
+  MAX_GPU_COUNT="1"
+  SELECTION_GOAL="cost"
+  MAX_ALIVE_MIN="90"
+  BUDGET_ESTIMATE_MIN="90"
+  VAST_DISK_GB="350"
+  PUBLISH_TIERS="longlive2-nvfp4-blackwell"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --create-instance)
@@ -152,6 +205,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --gpu-regex)
       GPU_REGEX="$2"
+      shift 2
+      ;;
+    --offer-query)
+      OFFER_QUERY="$2"
       shift 2
       ;;
     --min-gpu-count)
@@ -200,6 +257,20 @@ while [[ $# -gt 0 ]]; do
       ;;
     --profile)
       LONGLIVE2_PROFILE="$2"
+      shift 2
+      ;;
+    --blackwell-tier)
+      apply_blackwell_tier "$2"
+      shift 2
+      ;;
+    --blackwell-cold-build)
+      RESTORE_TUPLE="0"
+      DOWNLOAD_FALLBACK="1"
+      PUBLISH_R2_ON_SUCCESS="1"
+      shift
+      ;;
+    --cuda-archs)
+      LONGLIVE2_CUDA_ARCHS="$2"
       shift 2
       ;;
     --height)
@@ -747,11 +818,16 @@ select_offer_if_needed() {
   local scan_csv="${SCRIPT_DIR}/.tmp/${RUN_ID}_longlive2_offer_scan.csv"
   local selected_json="${SCRIPT_DIR}/.tmp/${RUN_ID}_longlive2_offer_selected.json"
   echo "[longlive2-vast] querying offers gpu_regex=${GPU_REGEX} max_dph=${MAX_DPH}"
-  python3 "${REPO_ROOT}/scripts/vast/query_video_offers.py" \
-    --model longlive2 \
-    --gpu-name-regex "${GPU_REGEX}" \
-    --out-json "${scan_json}" \
+  query_args=(
+    --model longlive2
+    --gpu-name-regex "${GPU_REGEX}"
+    --out-json "${scan_json}"
     --out-csv "${scan_csv}"
+  )
+  if [[ -n "${OFFER_QUERY}" ]]; then
+    query_args+=(--query "${OFFER_QUERY}")
+  fi
+  python3 "${REPO_ROOT}/scripts/vast/query_video_offers.py" "${query_args[@]}"
   select_args=(
     --scan-json "${scan_json}"
     --selection-goal "${SELECTION_GOAL}"
@@ -895,7 +971,12 @@ copy_r2_secret() {
 }
 
 remote_setup_longlive2_clone_only() {
-  remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/setup_longlive2.sh --profile $(q "${LONGLIVE2_PROFILE}") --skip-build 2>&1 | tee $(q "${REMOTE_RUN_DIR}/setup_longlive2_clone.log")"
+  setup_args=(--profile "${LONGLIVE2_PROFILE}")
+  if [[ -n "${LONGLIVE2_CUDA_ARCHS}" ]]; then
+    setup_args+=(--cuda-archs "${LONGLIVE2_CUDA_ARCHS}")
+  fi
+  setup_args+=(--skip-build)
+  remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/setup_longlive2.sh $(printf '%q ' "${setup_args[@]}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/setup_longlive2_clone.log")"
 }
 
 remote_restore_or_download() {
@@ -914,7 +995,11 @@ remote_restore_or_download() {
     fi
     echo "[longlive2-vast] restore failed; falling back to setup and model download"
   fi
-  remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/setup_longlive2.sh --profile $(q "${LONGLIVE2_PROFILE}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/setup_longlive2_build.log")"
+  setup_args=(--profile "${LONGLIVE2_PROFILE}")
+  if [[ -n "${LONGLIVE2_CUDA_ARCHS}" ]]; then
+    setup_args+=(--cuda-archs "${LONGLIVE2_CUDA_ARCHS}")
+  fi
+  remote_ssh_guarded "set -euo pipefail; cd $(q "${REMOTE_ROOT}"); bash VideoDiffusion/setup_longlive2.sh $(printf '%q ' "${setup_args[@]}") 2>&1 | tee $(q "${REMOTE_RUN_DIR}/setup_longlive2_build.log")"
   download_args=(--profile "${LONGLIVE2_PROFILE}")
   if [[ "${INCLUDE_WAN}" == "1" ]]; then
     download_args+=(--include-wan)
@@ -978,7 +1063,7 @@ remote_publish_r2_tuple() {
   publish_args=(
     --model longlive2
     --runtime-tag "${RUNTIME_TAG}"
-    --tiers longlive2-bf16-sp-hopper
+    --tiers "${PUBLISH_TIERS}"
     --build-gpu-class "${PUBLISH_BUILD_GPU_CLASS}"
     --validated-profiles "${PUBLISH_VALIDATED_PROFILES}"
     --env-compression "${PUBLISH_ENV_COMPRESSION}"
@@ -1021,9 +1106,10 @@ PY
     exit 1
   fi
   echo "[longlive2-vast] preflight: offline LongLive2 dry run"
-  bash "${SCRIPT_DIR}/run_longlive2_sp_offline.sh" \
+  preflight_offline_args=(
     --dry-run \
     --run-dir "${SCRIPT_DIR}/.tmp/${RUN_ID}_preflight_offline" \
+    --profile "${LONGLIVE2_PROFILE}" \
     --height "${LONGLIVE2_HEIGHT}" \
     --width "${LONGLIVE2_WIDTH}" \
     --frames "${LONGLIVE2_FRAMES}" \
@@ -1032,6 +1118,11 @@ PY
     --seed "${LONGLIVE2_SEED}" \
     --shot-prompt "A calm luminous ocean breathes slowly." \
     --shot-prompt "A frantic neon tunnel accelerates."
+  )
+  if [[ -n "${LONGLIVE2_SAMPLING_STEPS}" ]]; then
+    preflight_offline_args+=(--sampling-steps "${LONGLIVE2_SAMPLING_STEPS}")
+  fi
+  bash "${SCRIPT_DIR}/run_longlive2_sp_offline.sh" "${preflight_offline_args[@]}"
   if [[ "${RUN_BENCHMARK}" == "1" ]]; then
     echo "[longlive2-vast] preflight: benchmark dry run"
     bash "${SCRIPT_DIR}/run_longlive2_sp_benchmark.sh" \
@@ -1076,6 +1167,7 @@ run_id=${RUN_ID}
 create_instance=${CREATE_INSTANCE}
 preflight=${PREFLIGHT}
 runtime_tag=${RUNTIME_TAG}
+offer_query=${OFFER_QUERY}
 gpu_regex=${GPU_REGEX}
 min_gpu_count=${MIN_GPU_COUNT}
 max_gpu_count=${MAX_GPU_COUNT}
@@ -1086,6 +1178,7 @@ min_credit_usd=${MIN_CREDIT_USD}
 min_credit_reserve_usd=${MIN_CREDIT_RESERVE_USD}
 max_estimated_spend_usd=${MAX_ESTIMATED_SPEND_USD}
 profile=${LONGLIVE2_PROFILE}
+cuda_archs=${LONGLIVE2_CUDA_ARCHS}
 geometry=${LONGLIVE2_HEIGHT}x${LONGLIVE2_WIDTH}
 frames=${LONGLIVE2_FRAMES}
 sp_size=${LONGLIVE2_SP_SIZE}
@@ -1097,6 +1190,7 @@ schedule_csv=${LONGLIVE2_SCHEDULE_CSV}
 local_out_dir=${LOCAL_OUT_DIR}
 phase_report=${PHASE_REPORT}
 publish_r2_on_success=${PUBLISH_R2_ON_SUCCESS}
+publish_tiers=${PUBLISH_TIERS}
 publish_include_weights=${PUBLISH_INCLUDE_WEIGHTS}
 publish_env_compression=${PUBLISH_ENV_COMPRESSION}
 publish_weights_compression=${PUBLISH_WEIGHTS_COMPRESSION}

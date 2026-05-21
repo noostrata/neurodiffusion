@@ -128,6 +128,34 @@ if [[ "${LONGLIVE2_SKIP_BUILD}" == "1" ]]; then
   exit 0
 fi
 
+detect_blackwell_cuda_archs() {
+  if [[ -n "${LONGLIVE2_CUDA_ARCHS}" ]]; then
+    return
+  fi
+  if ! command_exists nvidia-smi; then
+    return
+  fi
+  local gpu_names
+  gpu_names="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | tr '\n' ',' || true)"
+  case "${gpu_names}" in
+    *"RTX 5090"*|*"RTX5090"*)
+      LONGLIVE2_CUDA_ARCHS="120"
+      ;;
+    *"GB200"*|*"GB300"*|*"B300"*|*"B200"*)
+      LONGLIVE2_CUDA_ARCHS="100"
+      ;;
+  esac
+}
+
+if [[ "${LONGLIVE2_PROFILE}" == nvfp4* ]]; then
+  detect_blackwell_cuda_archs
+  if [[ -n "${LONGLIVE2_CUDA_ARCHS}" ]]; then
+    video_log "Using CUDA_ARCHS=${LONGLIVE2_CUDA_ARCHS} for LongLive2 NVFP4 extension builds."
+  else
+    video_log "CUDA_ARCHS not set; LongLive2 NVFP4 extension builds will use upstream defaults."
+  fi
+fi
+
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 if ! command_exists "${PYTHON_BIN}"; then
   echo "[error] python3 is required." >&2
@@ -188,6 +216,27 @@ else
   fi
   if [[ -n "${LONGLIVE2_CUDA_ARCHS}" ]]; then
     export CUDA_ARCHS="${LONGLIVE2_CUDA_ARCHS}"
+    if [[ -z "${TORCH_CUDA_ARCH_LIST:-}" ]]; then
+      TORCH_CUDA_ARCH_LIST="$(python3 - "${LONGLIVE2_CUDA_ARCHS}" <<'PY'
+import sys
+
+items = []
+for raw in sys.argv[1].replace(";", ",").split(","):
+    raw = raw.strip()
+    if not raw:
+        continue
+    if "." in raw:
+        items.append(raw)
+        continue
+    if len(raw) >= 2:
+        items.append(f"{raw[:-1]}.{raw[-1]}")
+    else:
+        items.append(raw)
+print(";".join(items))
+PY
+)"
+      export TORCH_CUDA_ARCH_LIST
+    fi
   fi
   (
     cd "${LONGLIVE2_SRC_DIR}/fouroversix"

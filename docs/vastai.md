@@ -182,7 +182,7 @@ The wrapper:
 6. copies R2 credentials to the pod only for restore and removes them on exit,
 7. restores the tuple and repairs non-relocatable venv shebangs,
 8. runs `test_single_chunk.sh` detached with polling,
-9. pulls logs and the MP4 to `~/Downloads/...`,
+9. pulls logs and the MP4 to the configured local artifact directory,
 10. destroys the instance when `MAGI_VAST_DESTROY_ON_EXIT=1`.
 
 Default smoke profile:
@@ -235,7 +235,7 @@ The matrix runner:
 5. leaves `rtx4090_lowres` available only when explicitly requested with `--tiers rtx4090_lowres`;
 6. can preserve a credit reserve with `--min-credit-reserve-usd`;
 7. defaults to `--max-gpu-count 1` so one-stream Scope runs do not select multi-GPU listings accidentally;
-8. writes `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` and sanitized `invoice_report.json`;
+8. writes `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/<matrix_run_id>/matrix_report.{json,csv,md}` and sanitized `invoice_report.json` by default;
 9. checks final active instance count after paid runs without writing raw host/IP data into tracked docs.
 
 Latest matrix telemetry (`scope_longlive_vast_matrix_20260520T200307Z`):
@@ -283,7 +283,7 @@ The wrapper:
 7. starts Scope with `SCOPE_AUTO_LOAD=0`;
 8. loads LongLive with `SCOPE_VACE_ENABLED=false`;
 9. records WebRTC output while synthetic EEG drives the Scope OSC sink;
-10. pulls MP4, sampled frames, logs, and `run_report.json` to `/Users/xenochain/Downloads/<run_id>/`;
+10. pulls MP4, sampled frames, logs, and `run_report.json` to `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/<run_id>/` by default;
 11. writes `phase_report.json`, `artifact_qa.json`, and `contact_sheet.jpg` locally;
 12. destroys a wrapper-created instance by default.
 
@@ -334,10 +334,10 @@ Instance lifecycle:
 
 Latest LongLive2 telemetry:
 
-1. Successful cold run: `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/`.
+1. Successful cold run: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/`.
 2. Output MP4: `832x480`, `125` frames, `24 fps`, `5.208s`, nonblank QA.
 3. Published R2 tuple: `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1`.
-4. First restore validation: `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T235723Z/`.
+4. First restore validation: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T235723Z/`.
 5. Restore phase completed in `559s`, then render failed because the restore path did not recreate the upstream Wan symlink.
 6. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates that symlink; rerun restore validation before promoting the tuple.
 

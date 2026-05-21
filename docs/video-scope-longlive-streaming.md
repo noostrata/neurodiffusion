@@ -29,7 +29,7 @@ Latest empirical reference:
 
 - `docs/video-scope-longlive-observations.md`
 - runtime tuple: `scope_auto_py312_torch2.9.1_cu128_sm100`
-- recorded local video: `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4`
+- recorded local video: `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4`
 - latest cheap-GPU result: `RTX 4090 x1` generated coherent output but failed realtime at `11.310 fps` for `320x576`.
 
 ## Why Scope + LongLive
@@ -341,7 +341,7 @@ Default matrix behavior:
 9. `--min-credit-reserve-usd` can keep a Vast credit reserve before paid creates; add `--require-credit-check` when the run must stop if credit cannot be queried.
 10. `--max-gpu-count` defaults to `1` for Scope/LongLive so a one-stream run does not accidentally pick multi-GPU offers.
 11. By default, the matrix stops larger upscale probes after the first failed upscale; add `--continue-after-upscale-fail` for exhaustive probing.
-12. Output is written under `/Users/xenochain/Downloads/<matrix_run_id>/matrix_report.{json,csv,md}` plus `invoice_report.json` and per-attempt MP4/frame/log artifacts.
+12. Output is written under `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/<matrix_run_id>/matrix_report.{json,csv,md}` plus `invoice_report.json` and per-attempt MP4/frame/log artifacts by default.
 13. The matrix does not keep instances by default; use `--keep-instance` only for intentional interactive debugging.
 14. Smoke reports include `phase_report.json`, `artifact_qa.json`, contact sheets, and `[scope-vast-ts]` UTC phase markers for setup/restore/load/capture/pullback telemetry.
 
@@ -378,8 +378,8 @@ Safe behavior:
 1. Without `--create-instance`, the script requires `VAST_INSTANCE_ID` and will not create paid compute.
 2. With `--create-instance`, it queries/selects an offer, provisions a Vast SSH instance, and destroys that instance on exit unless `--keep-instance` is passed.
 3. The R2 secret is copied to the instance only for tuple restore and removed during cleanup.
-4. Output video, sampled frames, logs, `run_report.json`, `phase_report.json`, `artifact_qa.json`, and `contact_sheet.jpg` are pulled/written under `/Users/xenochain/Downloads/<run_id>/`.
-5. A flat video copy is also written to `/Users/xenochain/Downloads/<run_id>_webrtc_capture.mp4`.
+4. Output video, sampled frames, logs, `run_report.json`, `phase_report.json`, `artifact_qa.json`, and `contact_sheet.jpg` are pulled/written under `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/<run_id>/` by default.
+5. A flat video copy is also written under `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/<run_id>/` by default.
 
 Acceptance gate:
 
@@ -417,7 +417,7 @@ Observed on 2026-05-15:
 2. 90s WebRTC receive: `2203` frames, `24.868 fps`, first frame `1.507s`.
 3. 30s recorded WebRTC capture: `743` frames, `25.040 fps`, first frame `0.579s`.
 4. Synthetic EEG `balancer` policy sent Scope OSC updates successfully during generation.
-5. Local MP4: `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4`.
+5. Local MP4: `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4`.
 6. R2 tuple: `scope_auto_py312_torch2.9.1_cu128_sm100`.
 7. Current fresh-instance lower bound after tuple restore is still server start plus load: about `7s + 19s` in the B200 run, before WebRTC first-frame latency.
 
@@ -428,8 +428,8 @@ Observed on 2026-05-20:
 1. `RTX 4090 x1` at `320x576` generated coherent neon tunnel output.
 2. WebRTC receive: `322` frames, `11.310 fps`, first frame `2.480s`.
 3. Synthetic EEG emitted `3` state changes during the run.
-4. Local MP4: `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4`.
-5. Local frame: `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_frame_000024.png`.
+4. Local MP4: `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4`.
+5. Local frame: `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/scope_longlive_vast_smoke_20260520T190833Z_frame_000024.png`.
 6. Result: fail for realtime at `320x576`; keep 4090 only for protocol/quality checks or a future lower-resolution experiment.
 
 ## Latest H200 Matrix Result
@@ -448,7 +448,7 @@ Observed on 2026-05-20:
 
 Observed on 2026-05-20:
 
-1. Same-instance sweep run root: `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/`.
+1. Same-instance sweep run root: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/`.
 2. `320x576` passed: `748` frames, `25.768 fps`, first frame `1.384s`.
 3. `336x592` passed: `730` frames, `24.757 fps`, first frame `0.856s`.
 4. `352x576` passed: `736` frames, `24.835 fps`, first frame `0.721s`.

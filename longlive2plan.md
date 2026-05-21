@@ -171,15 +171,15 @@ and account identifiers out of this file.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-05-21 | planning | ready for no-paid preflight | H200 x2 candidate `28747627` at last scan | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | target `<=45 min` | none yet | credit was about `$9.63`; active instances were `[]`; re-query before spending |
 | 2026-05-21 | no-spend validation | pass | none | n/a | `$0` | none | `bash scripts/check.sh` and `git diff --check` passed; `vastai show instances --raw` returned `[]` |
-| 2026-05-21 | wrapper preflight | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T224724Z/` | credit `$9.626478`, required `$7.00`, active instances `[]`; no paid instance created |
-| 2026-05-21 | wrapper preflight | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T224854Z/` | rerun after final timeout/docs patch; credit `$9.626478`, required `$7.00`, active instances `[]`; no paid instance created |
-| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.918` over `427s`; planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T225420Z/` | setup/build reached model download, then failed because no `hf` or `huggingface-cli` binary existed; artifact pullback and teardown succeeded; active instances verified `[]` |
+| 2026-05-21 | wrapper preflight | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | planned `$5.807` for `45 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T224724Z/` | credit `$9.626478`, required `$7.00`, active instances `[]`; no paid instance created |
+| 2026-05-21 | wrapper preflight | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | planned `$5.807` for `45 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T224854Z/` | rerun after final timeout/docs patch; credit `$9.626478`, required `$7.00`, active instances `[]`; no paid instance created |
+| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.918` over `427s`; planned `$5.807` for `45 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T225420Z/` | setup/build reached model download, then failed because no `hf` or `huggingface-cli` binary existed; artifact pullback and teardown succeeded; active instances verified `[]` |
 | 2026-05-21 | no-spend patch validation | pass | none | n/a | `$0` | `VideoDiffusion/.tmp/current_vast_credit_after_longlive2_fail.json` | added Python HF fallback plus publish-on-success wrapper path; forced downloader fallback dry-run passed; current credit about `$8.9355`; active instances `[]`; current H200 x2 offers start at `$7.743/h` |
-| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.667` over `310s`; planned `$7.743` for `60 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T230713Z/` | HF model download succeeded through Python fallback; `torchrun` failed importing `x_clip_loss` from `transformers==5.9.0`; artifact pullback and teardown succeeded; active instances verified `0`; current credit about `$8.213` |
-| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.693` over `322s`; planned `$7.743` for `60 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T231513Z/` | `transformers==4.57.3` pin and `x_clip_loss` guard passed; HF model download succeeded; `torchrun` failed because upstream imports `decord` but requirements did not install it; artifact pullback and teardown succeeded; active instances verified `0`; current credit about `$7.544` |
-| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.895` over `416s`; planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T232208Z/` | `transformers` and `decord` guards passed; SP initialized with `sp_sizes=[2]`; failed because Wan2.2 base assets were not downloaded/linked; artifact pullback and teardown succeeded; active instances verified `[]`; current credit about `$6.126` |
-| 2026-05-21 | paid BF16 SP smoke + R2 publish | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$3.170` over `1474s`; planned `$5.807` for `45 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/` | cold setup/download/render succeeded; MP4 is `832x480`, `125` frames, `24 fps`, `5.208s`; SP used both H200s with max `36341 MiB` each; R2 publish succeeded with `3.977 GB` env archive, `44.203 GB` weights archive, and flash-attn wheel; local artifact pullback and teardown succeeded; active instances verified `[]`; current credit after charges about `$2.918` |
-| 2026-05-21 | paid BF16 SP restore validation | fail after restore | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$1.682` over `782s`; planned `$2.323` for `18 min` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T235723Z/` | R2 tuple restore succeeded in `559s`, then `torchrun` failed because restored weights did not recreate the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` link; patched `restore_r2_prebuild_model.sh` to recreate and require that link; artifact pullback and teardown succeeded; active instances verified `[]`; current credit about `$0.64` |
+| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.667` over `310s`; planned `$7.743` for `60 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T230713Z/` | HF model download succeeded through Python fallback; `torchrun` failed importing `x_clip_loss` from `transformers==5.9.0`; artifact pullback and teardown succeeded; active instances verified `0`; current credit about `$8.213` |
+| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.693` over `322s`; planned `$7.743` for `60 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T231513Z/` | `transformers==4.57.3` pin and `x_clip_loss` guard passed; HF model download succeeded; `torchrun` failed because upstream imports `decord` but requirements did not install it; artifact pullback and teardown succeeded; active instances verified `0`; current credit about `$7.544` |
+| 2026-05-21 | paid BF16 SP smoke | fail before render | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$0.895` over `416s`; planned `$5.807` for `45 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T232208Z/` | `transformers` and `decord` guards passed; SP initialized with `sp_sizes=[2]`; failed because Wan2.2 base assets were not downloaded/linked; artifact pullback and teardown succeeded; active instances verified `[]`; current credit about `$6.126` |
+| 2026-05-21 | paid BF16 SP smoke + R2 publish | pass | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$3.170` over `1474s`; planned `$5.807` for `45 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/` | cold setup/download/render succeeded; MP4 is `832x480`, `125` frames, `24 fps`, `5.208s`; SP used both H200s with max `36341 MiB` each; R2 publish succeeded with `3.977 GB` env archive, `44.203 GB` weights archive, and flash-attn wheel; local artifact pullback and teardown succeeded; active instances verified `[]`; current credit after charges about `$2.918` |
+| 2026-05-21 | paid BF16 SP restore validation | fail after restore | H200 x2 offer `28957790` at `$7.743/h` | `longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1` | observed about `$1.682` over `782s`; planned `$2.323` for `18 min` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T235723Z/` | R2 tuple restore succeeded in `559s`, then `torchrun` failed because restored weights did not recreate the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` link; patched `restore_r2_prebuild_model.sh` to recreate and require that link; artifact pullback and teardown succeeded; active instances verified `[]`; current credit about `$0.64` |
 
 ## What Changed
 
@@ -226,10 +226,10 @@ bash VideoDiffusion/run_longlive2_sp_vast_smoke.sh --preflight
 ```
 
 - [ ] Confirm preflight writes:
-  - `/Users/xenochain/Downloads/<run_id>/selected_offer.json`
-  - `/Users/xenochain/Downloads/<run_id>/credit_check.json`
-  - `/Users/xenochain/Downloads/<run_id>/budget_plan.json`
-  - `/Users/xenochain/Downloads/<run_id>/phase_report.json`
+  - `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/<run_id>/selected_offer.json`
+  - `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/<run_id>/credit_check.json`
+  - `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/<run_id>/budget_plan.json`
+  - `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/<run_id>/phase_report.json`
 
 - [ ] Run the repo validation gate:
 
@@ -448,7 +448,7 @@ Telemetry table to fill after the run:
 
 ### Phase 7: Local Artifact Pullback And QA
 
-- [ ] Confirm the wrapper pulled artifacts to `/Users/xenochain/Downloads/<run_id>/` or another explicit local directory.
+- [ ] Confirm the wrapper pulled artifacts to `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/<run_id>/` or another explicit local directory.
 - [ ] Confirm local artifacts include:
   - MP4 or failure logs;
   - config;
@@ -662,7 +662,7 @@ Re-query immediately before launch because Vast offers are dynamic.
 
 ## Cold Build/Publish Run: Controlled BF16 SP Smoke
 
-This path is already proven by `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/`.
+This path is already proven by `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/`.
 Use it only after explicit approval to spend when deliberately replacing or rebuilding the tuple.
 
 Use the build/download fallback path:
@@ -714,7 +714,7 @@ Expected wrapper behavior:
 4. clone/build LongLive2;
 5. download needed model artifacts;
 6. run `torchrun` through `run_longlive2_sp_offline.sh`;
-7. pull artifacts to `/Users/xenochain/Downloads/<run_id>/`;
+7. pull artifacts to `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/<run_id>/`;
 8. teardown by default.
 
 ## Next Paid Run: Patched Restore Validation

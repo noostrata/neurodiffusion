@@ -22,6 +22,8 @@ VideoDiffusion/.longlive2_runtime.env
 **/*.log
 
 # Outputs / artifacts
+/artifacts/*
+!/artifacts/README.md
 *.mp4
 *.png
 *.jpg

@@ -76,15 +76,15 @@ bash VideoDiffusion/run_scope_longlive_vast_sweep.sh \
 Run root:
 
 ```text
-/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/
 ```
 
 Reports:
 
 ```text
-/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/sweep_report.json
-/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/sweep_report.md
-/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/phase_report.json
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/sweep_report.json
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/sweep_report.md
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/phase_report.json
 ```
 
 Teardown and spend:
@@ -100,10 +100,10 @@ Results:
 
 | Resolution | Pixels | Pass | FPS | First frame | Frames | Local video |
 | --- | ---: | --- | ---: | ---: | ---: | --- |
-| `320x576` | `184,320` | yes | `25.768` | `1.384s` | `748` | `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z_320x576_webrtc_capture.mp4` |
-| `336x592` | `198,912` | yes | `24.757` | `0.856s` | `730` | `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z_336x592_webrtc_capture.mp4` |
-| `352x576` | `202,752` | yes | `24.835` | `0.721s` | `736` | `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z_352x576_webrtc_capture.mp4` |
-| `368x640` | `235,520` | no | `22.175` | `0.749s` | `660` | `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z_368x640_webrtc_capture.mp4` |
+| `320x576` | `184,320` | yes | `25.768` | `1.384s` | `748` | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/scope_longlive_vast_smoke_20260520T211512Z_320x576_webrtc_capture.mp4` |
+| `336x592` | `198,912` | yes | `24.757` | `0.856s` | `730` | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/scope_longlive_vast_smoke_20260520T211512Z_336x592_webrtc_capture.mp4` |
+| `352x576` | `202,752` | yes | `24.835` | `0.721s` | `736` | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/scope_longlive_vast_smoke_20260520T211512Z_352x576_webrtc_capture.mp4` |
+| `368x640` | `235,520` | no | `22.175` | `0.749s` | `660` | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/scope_longlive_vast_smoke_20260520T211512Z_368x640_webrtc_capture.mp4` |
 
 Key phase telemetry:
 
@@ -155,15 +155,15 @@ bash VideoDiffusion/run_scope_longlive_vast_matrix.sh \
 Run root:
 
 ```text
-/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/
 ```
 
 Matrix reports:
 
 ```text
-/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/matrix_report.json
-/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/matrix_report.csv
-/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/matrix_report.md
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/matrix_report.json
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/matrix_report.csv
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/matrix_report.md
 ```
 
 Teardown and balance:
@@ -177,10 +177,10 @@ Results:
 
 | Attempt | GPU | Resolution | Pass | FPS | First frame | Frames | Invoice cost | Local video |
 | ---: | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| 1 | `H200` | `320x576` | yes | `25.376` | `1.338s` | `737` | `$1.681` | `/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_01_hopper_320x576_webrtc_capture.mp4` |
-| 2 | `H200` | `368x640` | no | `20.835` | `1.506s` | `600` | `$0.890` | `/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_02_hopper_368x640_webrtc_capture.mp4` |
-| 3 | `H200` | `480x832` | no | `12.171` | `1.793s` | `348` | `$0.624` | `/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_03_hopper_480x832_webrtc_capture.mp4` |
-| 4 | `RTX 4090` | `256x448` | no | `12.912` | `4.693s` | `333` | `$0.907` | `/Users/xenochain/Downloads/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_04_rtx4090_lowres_256x448_webrtc_capture.mp4` |
+| 1 | `H200` | `320x576` | yes | `25.376` | `1.338s` | `737` | `$1.681` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_01_hopper_320x576_webrtc_capture.mp4` |
+| 2 | `H200` | `368x640` | no | `20.835` | `1.506s` | `600` | `$0.890` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_02_hopper_368x640_webrtc_capture.mp4` |
+| 3 | `H200` | `480x832` | no | `12.171` | `1.793s` | `348` | `$0.624` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_03_hopper_480x832_webrtc_capture.mp4` |
+| 4 | `RTX 4090` | `256x448` | no | `12.912` | `4.693s` | `333` | `$0.907` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_matrix_20260520T200307Z/scope_longlive_vast_matrix_20260520T200307Z_04_rtx4090_lowres_256x448_webrtc_capture.mp4` |
 
 Telemetry:
 
@@ -335,16 +335,16 @@ Acceptance:
 Local artifacts:
 
 ```text
-/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z/run_report.json
-/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z/webrtc_capture.mp4
-/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z/frames/frame_000024.png
-/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4
-/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_frame_000024.png
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/run_report.json
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/webrtc_capture.mp4
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/frames/frame_000024.png
+/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4
+/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/scope_longlive_vast_smoke_20260520T190833Z_frame_000024.png
 ```
 
 Visual inspection:
 
-1. opened `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z/frames/frame_000024.png`;
+1. opened `/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/frames/frame_000024.png`;
 2. frame showed coherent red/blue hexagonal neon tunnel geometry;
 3. output quality was valid, but throughput was not realtime.
 
@@ -537,7 +537,7 @@ Offline one-chunk smoke:
 | Pipeline load inside standalone process | `19.864s` |
 | First chunk latency | `1.176s` |
 | Chunk throughput | `7.651 fps` |
-| Output video | `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_offline_longlive_smoke.mp4` |
+| Output video | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_offline_longlive_smoke.mp4` |
 
 Realtime WebRTC + synthetic EEG validation:
 
@@ -553,7 +553,7 @@ Recorded video:
 
 | Field | Value |
 | --- | --- |
-| Local MP4 | `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4` |
+| Local MP4 | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4` |
 | Duration | `30.959s` |
 | Frames | `743` |
 | Resolution | `576x320` |
@@ -563,7 +563,7 @@ Recorded video:
 Visual inspection:
 
 1. pulled sampled frames to local `VideoDiffusion/.tmp/scope_b200_20260515T194707Z_remote/`;
-2. copied representative frame to `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_frame_000180.png`;
+2. copied representative frame to `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_frame_000180.png`;
 3. opened frames `000030`, `000180`, and `000360`;
 4. frames were coherent neon tunnel geometry with visible color/shape changes and no blank/noisy/static collapse.
 
@@ -599,9 +599,9 @@ VideoDiffusion/.tmp/scope_b200_20260515T194707Z_remote/
 User-facing artifacts:
 
 ```text
-/Users/xenochain/Downloads/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4
-/Users/xenochain/Downloads/scope_b200_20260515T194707Z_frame_000180.png
-/Users/xenochain/Downloads/scope_b200_20260515T194707Z_offline_longlive_smoke.mp4
+/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4
+/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_frame_000180.png
+/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_offline_longlive_smoke.mp4
 ```
 
 Key logs:

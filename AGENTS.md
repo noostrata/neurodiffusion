@@ -162,7 +162,8 @@ For generated videos, the user wants the result on the local system.
 
 - Remote-only output is incomplete.
 - R2-only output is incomplete unless a local copy is also pulled down.
-- Prefer a clear local destination such as `/Users/xenochain/Downloads/<run_tag>.mp4` for final user-facing videos.
+- Prefer the ignored repo-local artifact tree under `artifacts/` for run outputs, reports, telemetry, sampled frames, and validation videos.
+- Use `/Users/xenochain/Downloads` only for an explicit final user-facing copy, not as the default project artifact archive.
 - Also pull minimal logs/reports needed to explain success/failure.
 
 ## MAGI Runtime Contracts

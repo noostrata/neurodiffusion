@@ -291,10 +291,10 @@ Current paid evidence:
 1. `2026-05-21` H200 x2 paid bring-up used offer `28957790` at about `$7.743/h`.
 2. Early attempts found and fixed three cold-start blockers: missing HF CLI fallback, `transformers==5.9.0` missing the upstream `x_clip_loss` import, and missing `decord`.
 3. A fourth attempt proved Ulysses SP initialization with `sp_sizes=[2]`, then failed because Wan2.2 base assets were not downloaded/linked.
-4. The fifth attempt, `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/`, succeeded end-to-end on the cold build/download path.
-5. That successful run wrote `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/offline/videos/rank0-0-0_regular_sp2.mp4`.
+4. The fifth attempt, `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/`, succeeded end-to-end on the cold build/download path.
+5. That successful run wrote `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/offline/videos/rank0-0-0_regular_sp2.mp4`.
 6. `ffprobe` confirmed H.264, `832x480`, `125` frames, `24 fps`, and `5.208s`.
-7. Artifact QA reported nonblank luma samples and a contact sheet at `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/offline/qa/contact_sheet.jpg`.
+7. Artifact QA reported nonblank luma samples and a contact sheet at `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/offline/qa/contact_sheet.jpg`.
 8. GPU telemetry showed both H200s active with max `36341 MiB` used on each card and `100%` max utilization.
 9. Phase telemetry: total wrapper elapsed `1474s`, cold restore/download/build phase `235s`, render phase `125s`, R2 publish phase `972s`, artifact pullback `28s`, teardown `3s`.
 10. The estimated compute spend for that run was about `$3.170`.
@@ -303,7 +303,7 @@ Current paid evidence:
     - env archive: `neurodiffusion/env-cache/longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1/venv_longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1.tar.zst`, `3,977,262,169` bytes;
     - weights archive: `neurodiffusion/weights/longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1/weights_longlive2_bf16_sp_py310_torch2.8.0_cu128_sm90_prebuild1.tar`, `44,203,243,520` bytes;
     - wheelhouse includes `flash_attn-2.8.3-cp311-cp311-linux_x86_64.whl`, `256,043,372` bytes.
-13. A fresh restore validation, `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T235723Z/`, restored the R2 tuple in `559s` but failed at `torchrun` because the restore path did not recreate the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` symlink.
+13. A fresh restore validation, `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T235723Z/`, restored the R2 tuple in `559s` but failed at `torchrun` because the restore path did not recreate the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` symlink.
 14. The repo now patches that restore-boundary failure in `VideoDiffusion/restore_r2_prebuild_model.sh`, which recreates and checks the Wan runtime link after tuple extraction.
 
 Current state:

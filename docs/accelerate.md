@@ -131,7 +131,7 @@ Planned tuple families:
 
 Latest H200 x2 BF16 SP result:
 
-1. Cold build/download/render run: `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/`.
+1. Cold build/download/render run: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/`.
 2. Output: one local MP4, `832x480`, `125` frames, `24 fps`, `5.208s`, nonblank contact sheet.
 3. GPU use: both H200s active, max `36341 MiB` and `100%` utilization per card.
 4. Total wrapper elapsed: `1474s`; estimated compute spend about `$3.170`.
@@ -141,7 +141,7 @@ Latest H200 x2 BF16 SP result:
 
 Latest restore validation result:
 
-1. Fresh restore run: `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T235723Z/`.
+1. Fresh restore run: `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T235723Z/`.
 2. R2 tuple restore succeeded in `559s`, proving that the large archive fetch/extract path works on a fresh H200 x2 host.
 3. The render failed because the restored cache did not recreate the upstream `LongLive2/wan_models/Wan2.2-TI2V-5B` symlink.
 4. `VideoDiffusion/restore_r2_prebuild_model.sh` now recreates and checks that symlink after LongLive2 tuple extraction.

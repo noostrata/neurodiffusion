@@ -808,7 +808,14 @@ def append_plan_row(
 
 def run_matrix(args: argparse.Namespace) -> int:
     matrix_run_id = args.matrix_run_id or f"scope_longlive_vast_matrix_{utc_stamp()}"
-    local_root = Path(args.local_root).expanduser() if args.local_root else Path.home() / "Downloads" / matrix_run_id
+    artifacts_root = Path(
+        os.environ.get("NEURODIFFUSION_ARTIFACTS_ROOT", str(REPO_ROOT / "artifacts"))
+    ).expanduser()
+    local_root = (
+        Path(args.local_root).expanduser()
+        if args.local_root
+        else artifacts_root / "runs" / "scope-longlive" / matrix_run_id
+    )
     work_dir = SCRIPT_DIR / ".tmp" / "scope_longlive_matrix" / matrix_run_id
     work_dir.mkdir(parents=True, exist_ok=True)
     local_root.mkdir(parents=True, exist_ok=True)

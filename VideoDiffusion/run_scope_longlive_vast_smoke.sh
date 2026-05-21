@@ -12,9 +12,11 @@ REMOTE_RUN_DIR="${SCOPE_VAST_REMOTE_RUN_DIR:-/workspace/neurodiffusion_runs/${RU
 REMOTE_R2_ENV="${REMOTE_ROOT}/.secrets/r2_full_access.env"
 R2_ENV_FILE="${R2_ENV_FILE:-/Users/xenochain/agents/secrets/r2_full_access.env}"
 R2_PREFIX="${R2_PREFIX:-neurodiffusion}"
-LOCAL_OUT_DIR="${SCOPE_VAST_LOCAL_OUT_DIR:-${HOME}/Downloads/${RUN_ID}}"
-FLAT_LOCAL_VIDEO="${SCOPE_VAST_FLAT_LOCAL_VIDEO:-${HOME}/Downloads/${RUN_ID}_webrtc_capture.mp4}"
-FLAT_LOCAL_FRAME="${SCOPE_VAST_FLAT_LOCAL_FRAME:-${HOME}/Downloads/${RUN_ID}_frame_000024.png}"
+ARTIFACTS_ROOT="${NEURODIFFUSION_ARTIFACTS_ROOT:-${REPO_ROOT}/artifacts}"
+LOCAL_MEDIA_DIR="${SCOPE_VAST_LOCAL_MEDIA_DIR:-${ARTIFACTS_ROOT}/media/scope-longlive/${RUN_ID}}"
+LOCAL_OUT_DIR="${SCOPE_VAST_LOCAL_OUT_DIR:-${ARTIFACTS_ROOT}/runs/scope-longlive/${RUN_ID}}"
+FLAT_LOCAL_VIDEO="${SCOPE_VAST_FLAT_LOCAL_VIDEO:-${LOCAL_MEDIA_DIR}/${RUN_ID}_webrtc_capture.mp4}"
+FLAT_LOCAL_FRAME="${SCOPE_VAST_FLAT_LOCAL_FRAME:-${LOCAL_MEDIA_DIR}/${RUN_ID}_frame_000024.png}"
 PHASE_LOG="${SCOPE_VAST_PHASE_LOG:-${LOCAL_OUT_DIR}/phase_markers.log}"
 SWEEP_RESOLUTIONS="${SCOPE_VAST_SWEEP_RESOLUTIONS:-}"
 
@@ -217,7 +219,7 @@ is_sweep_mode() {
 flat_video_for_label() {
   local label="$1"
   if is_sweep_mode; then
-    printf '%s/%s_%s_webrtc_capture.mp4\n' "${HOME}/Downloads" "${RUN_ID}" "${label}"
+    printf '%s/%s_%s_webrtc_capture.mp4\n' "${LOCAL_MEDIA_DIR}" "${RUN_ID}" "${label}"
   else
     printf '%s\n' "${FLAT_LOCAL_VIDEO}"
   fi
@@ -226,7 +228,7 @@ flat_video_for_label() {
 flat_frame_for_label() {
   local label="$1"
   if is_sweep_mode; then
-    printf '%s/%s_%s_frame_000024.png\n' "${HOME}/Downloads" "${RUN_ID}" "${label}"
+    printf '%s/%s_%s_frame_000024.png\n' "${LOCAL_MEDIA_DIR}" "${RUN_ID}" "${label}"
   else
     printf '%s\n' "${FLAT_LOCAL_FRAME}"
   fi
@@ -560,6 +562,7 @@ copy_flat_artifacts() {
   local local_dir="$1"
   local flat_video="$2"
   local flat_frame="$3"
+  mkdir -p "$(dirname -- "${flat_video}")" "$(dirname -- "${flat_frame}")"
   if [[ -f "${local_dir}/webrtc_capture.mp4" ]]; then
     cp -f "${local_dir}/webrtc_capture.mp4" "${flat_video}"
   fi

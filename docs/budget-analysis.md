@@ -150,7 +150,7 @@ Paid run; instance destroyed after local pullback.
 | Approx compute spend | about `$3.78` |
 | Realtime result | `24.868 fps` over a 90s WebRTC receive run |
 | First frame latency | `1.507s` in 90s run, `0.579s` in recorded 30s run |
-| Local output | `/Users/xenochain/Downloads/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4` |
+| Local output | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_b200_20260515T194707Z/scope_b200_20260515T194707Z_webrtc_recording_after_text_patch.mp4` |
 
 Cost interpretation:
 
@@ -169,7 +169,7 @@ Paid run; instance destroyed after local pullback.
 | Observed total rate after launch | `$0.8685185185185185/h` |
 | Realtime result | `11.310 fps` over a 30s WebRTC receive run |
 | First frame latency | `2.480s` |
-| Local output | `/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4` |
+| Local output | `/Users/xenochain/Code/neurodiffusion/artifacts/media/scope-longlive/scope_longlive_vast_smoke_20260520T190833Z/scope_longlive_vast_smoke_20260520T190833Z_webrtc_capture.mp4` |
 
 Cost/performance interpretation:
 
@@ -225,12 +225,12 @@ Paid H200 x2 run ladder; every created instance was destroyed and `vastai show i
 
 | Run | Outcome | Observed phase spend | Elapsed | Local artifacts |
 | --- | --- | ---: | ---: | --- |
-| `longlive2_sp_vast_smoke_20260520T225420Z` | failed before render: no `hf` / `huggingface-cli` binary | about `$0.918` | `427s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T225420Z/` |
-| `longlive2_sp_vast_smoke_20260520T230713Z` | failed before render: `transformers==5.9.0` missing `x_clip_loss` import | about `$0.667` | `310s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T230713Z/` |
-| `longlive2_sp_vast_smoke_20260520T231513Z` | failed before render: missing `decord` | about `$0.693` | `322s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T231513Z/` |
-| `longlive2_sp_vast_smoke_20260520T232208Z` | failed before render: missing Wan2.2 base asset/link | about `$0.895` | `416s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T232208Z/` |
-| `longlive2_sp_vast_smoke_20260520T233039Z` | succeeded: cold render + R2 publish + local pullback | about `$3.170` | `1474s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T233039Z/` |
-| `longlive2_sp_vast_smoke_20260520T235723Z` | restore fetched tuple, then failed before render on missing restored Wan symlink | about `$1.682` | `782s` | `/Users/xenochain/Downloads/longlive2_sp_vast_smoke_20260520T235723Z/` |
+| `longlive2_sp_vast_smoke_20260520T225420Z` | failed before render: no `hf` / `huggingface-cli` binary | about `$0.918` | `427s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T225420Z/` |
+| `longlive2_sp_vast_smoke_20260520T230713Z` | failed before render: `transformers==5.9.0` missing `x_clip_loss` import | about `$0.667` | `310s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T230713Z/` |
+| `longlive2_sp_vast_smoke_20260520T231513Z` | failed before render: missing `decord` | about `$0.693` | `322s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T231513Z/` |
+| `longlive2_sp_vast_smoke_20260520T232208Z` | failed before render: missing Wan2.2 base asset/link | about `$0.895` | `416s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T232208Z/` |
+| `longlive2_sp_vast_smoke_20260520T233039Z` | succeeded: cold render + R2 publish + local pullback | about `$3.170` | `1474s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T233039Z/` |
+| `longlive2_sp_vast_smoke_20260520T235723Z` | restore fetched tuple, then failed before render on missing restored Wan symlink | about `$1.682` | `782s` | `/Users/xenochain/Code/neurodiffusion/artifacts/runs/longlive2/longlive2_sp_vast_smoke_20260520T235723Z/` |
 
 Successful cold-render details:
 
@@ -273,7 +273,7 @@ Paid run; instance destroyed after local pullback.
 Run root:
 
 ```text
-/Users/xenochain/Downloads/scope_longlive_vast_smoke_20260520T211512Z/
+/Users/xenochain/Code/neurodiffusion/artifacts/runs/scope-longlive/scope_longlive_vast_smoke_20260520T211512Z/
 ```
 
 | Instance | GPU listing | Advertised rate | Invoice cost | Notes |

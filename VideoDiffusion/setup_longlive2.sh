@@ -115,6 +115,39 @@ init_git_submodules() {
   if [[ ! -f "${repo_dir}/.gitmodules" ]]; then
     return
   fi
+  local git_root
+  git_root="$(git -C "${repo_dir}" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ "${git_root}" != "$(cd "${repo_dir}" && pwd)" ]]; then
+    video_log "Cloning nested .gitmodules dependencies in ${repo_dir}."
+    while read -r key path; do
+      [[ -z "${key}" || -z "${path}" ]] && continue
+      local name="${key#submodule.}"
+      name="${name%.path}"
+      local url
+      url="$(git config -f "${repo_dir}/.gitmodules" --get "submodule.${name}.url")"
+      if [[ -z "${url}" ]]; then
+        echo "[error] Missing URL for nested submodule ${name} in ${repo_dir}/.gitmodules." >&2
+        exit 1
+      fi
+      local target="${repo_dir}/${path}"
+      if [[ -d "${target}/.git" ]]; then
+        continue
+      fi
+      if [[ -e "${target}" ]]; then
+        if [[ -n "$(find "${target}" -mindepth 1 -maxdepth 1 2>/dev/null | head -n1)" ]]; then
+          echo "[error] Nested submodule target exists but is not a git checkout: ${target}" >&2
+          exit 1
+        fi
+        rmdir "${target}"
+      fi
+      video_log "Cloning ${url} into ${target}."
+      if ! git clone --depth 1 "${url}" "${target}"; then
+        video_log "Shallow clone failed for ${url}; retrying full clone."
+        git clone "${url}" "${target}"
+      fi
+    done < <(git config -f "${repo_dir}/.gitmodules" --get-regexp '^submodule\..*\.path$')
+    return
+  fi
   video_log "Initializing git submodules in ${repo_dir}."
   git -C "${repo_dir}" submodule sync --recursive
   if ! git -C "${repo_dir}" submodule update --init --recursive --depth 1; then

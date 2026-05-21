@@ -345,7 +345,7 @@ Use this section for short operator notes that explain why the plan changed.
 - 2026-05-21: The first paid restore retry after top-up selected a cheaper H100 NVL x2 offer and failed before restore because direct SSH dropped during repo rsync immediately after remote system deps. Added `--transfer-retries` / `--transfer-retry-sleep-s` to `VideoDiffusion/run_longlive2_sp_vast_smoke.sh` and wrapped idempotent repo upload, R2 secret upload, and artifact pullback with bounded SSH stabilization retries.
 - 2026-05-21: The next H100 NVL x2 restore validation succeeded end-to-end with the R2 tuple, proving the Wan-link restore hook and promoting the BF16 SP SM90 tuple to `validated_restore_tuple`. The run also showed repo upload was wasting `254s`, so the wrapper now excludes local `.venv` and `artifacts/` from rsync and supports `--benchmark-only` for the next paid `sp1`/`sp2` speed test.
 - 2026-05-21: The benchmark-only H100 NVL x2 run proved the optimized repo upload (`10s`) and measured `sp2` slower than `sp1` (`0.663945x`). Per the decision rule, do not build the persistent Hopper BF16 SP live runner; keep LongLive2 for offline/research and keep Scope/LongLive as the realtime EEG path.
-- 2026-05-21: Re-scoped the next Blackwell test to `RTX 5090 x1` / SM120 instead of B200/GB200. Added one-GPU Blackwell wrapper defaults, CUDA arch plumbing, wall-clock render FPS reporting, and docs. No-spend preflight selected RTX 5090 offer `35949631` at `$0.9351851851851851/h` with planned `$1.402778` for a `90 min` cap.
+- 2026-05-21: Re-scoped the next Blackwell test to `RTX 5090 x1` / SM120 instead of B200/GB200. Added one-GPU Blackwell wrapper defaults, CUDA arch plumbing, wall-clock render FPS reporting, and docs. No-spend preflight selected RTX 5090 offer `35949631` at `$0.9351851851851851/h` with planned `$1.402778` for a `90 min` cap. Follow-up code review tightened the path so Blackwell runs set `--min-wall-fps 24` and strict remote NVFP4 GPU matching.
 
 ## Step-By-Step Checklist
 
@@ -1059,7 +1059,7 @@ Before saying "go", confirm:
 6. the planned Blackwell run selects `RTX 5090 x1`, not B200/GB200 x8 and not a two-GPU offer.
 7. the run uses `nvfp4_s2`, `sp_size=1`, `dp_size=1`, `sampling_steps=2`, and `CUDA_ARCHS=120`.
 8. first SM120 build uses `--blackwell-cold-build`; future restore checks remove that flag and use no HF download fallback.
-9. success is judged by `run_timing.json` / `run_report.json` wall-clock render FPS, not MP4 playback FPS.
+9. success is judged by `run_timing.json` / `run_report.json` wall-clock render FPS, not MP4 playback FPS; Blackwell tier mode sets `--min-wall-fps 24`, so `run_report.json` fails acceptance below realtime.
 10. the wrapper max-alive/budget guards are enabled and the operator watches for obvious stuck setup.
 11. artifact retention is telemetry-first: prune disposable media after QA and keep only reports/logs/manifests plus intentional proof clips.
 

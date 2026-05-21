@@ -450,6 +450,10 @@ def command_selftest() -> int:
             "2026-05-21 00:00:00,1,H200,88 %,11800 MiB,143000 MiB\n",
             encoding="utf-8",
         )
+        (run_dir / "run_timing.json").write_text(
+            json.dumps({"frames": 32, "wall_elapsed_s": 1.0, "wall_render_fps": 32.0, "exit_code": 0}) + "\n",
+            encoding="utf-8",
+        )
         args = argparse.Namespace(
             run_dir=str(run_dir),
             config="",
@@ -457,7 +461,7 @@ def command_selftest() -> int:
             qa_sample_count=3,
             allow_missing_video=True,
             allow_missing_telemetry=False,
-            min_wall_fps=0.0,
+            min_wall_fps=24.0,
         )
         rc = write_report(args)
         report = load_json(run_dir / "run_report.json")
@@ -465,6 +469,10 @@ def command_selftest() -> int:
         assert report["launch_plan"]["nproc_per_node"] == 2
         assert len(report["gpu_telemetry"]["gpus"]) == 2
         assert report["acceptance"]["passed"]
+        args.min_wall_fps = 33.0
+        assert write_report(args) == 1
+        report = load_json(run_dir / "run_report.json")
+        assert not report["acceptance"]["wall_fps_ok"]
         phase_log = run_dir / "phase_markers.log"
         phase_log.write_text(
             "[longlive2-vast-ts] 2026-05-21T00:00:00Z setup_start\n"

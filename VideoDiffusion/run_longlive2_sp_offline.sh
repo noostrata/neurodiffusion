@@ -40,6 +40,7 @@ LONGLIVE2_CUDA_VISIBLE_DEVICES="${LONGLIVE2_CUDA_VISIBLE_DEVICES:-}"
 LONGLIVE2_DRY_RUN="${LONGLIVE2_DRY_RUN:-0}"
 LONGLIVE2_SKIP_CONFIG_GENERATION="${LONGLIVE2_SKIP_CONFIG_GENERATION:-0}"
 LONGLIVE2_STRICT_PROFILE_GPU_MATCH="${LONGLIVE2_STRICT_PROFILE_GPU_MATCH:-0}"
+LONGLIVE2_MIN_WALL_FPS="${LONGLIVE2_MIN_WALL_FPS:-0}"
 
 usage() {
   cat <<EOF
@@ -68,6 +69,7 @@ Options:
   --lora-ckpt <path>            Optional LoRA checkpoint path
   --cuda-visible-devices <csv>  CUDA_VISIBLE_DEVICES override
   --strict-profile-gpu-match    Fail when NVFP4 profile is used on non-Blackwell GPU names
+  --min-wall-fps <fps>          Minimum wall-clock render FPS for run_report acceptance
   --dry-run                     Print plan without launching torchrun
 EOF
 }
@@ -164,6 +166,10 @@ while [[ $# -gt 0 ]]; do
     --strict-profile-gpu-match)
       LONGLIVE2_STRICT_PROFILE_GPU_MATCH="1"
       shift
+      ;;
+    --min-wall-fps)
+      LONGLIVE2_MIN_WALL_FPS="$2"
+      shift 2
       ;;
     --dry-run)
       LONGLIVE2_DRY_RUN="1"
@@ -317,7 +323,7 @@ if command_exists nvidia-smi; then
 else
   GPU_NAMES="unknown"
 fi
-if [[ "${LONGLIVE2_PROFILE}" == nvfp4* && "${GPU_NAMES}" != *"B200"* && "${GPU_NAMES}" != *"GB200"* && "${GPU_NAMES}" != *"RTX 5090"* && "${GPU_NAMES}" != *"RTX5090"* ]]; then
+if [[ "${LONGLIVE2_PROFILE}" == nvfp4* && "${GPU_NAMES}" != *"B200"* && "${GPU_NAMES}" != *"GB200"* && "${GPU_NAMES}" != *"GB300"* && "${GPU_NAMES}" != *"B300"* && "${GPU_NAMES}" != *"RTX 5090"* && "${GPU_NAMES}" != *"RTX5090"* ]]; then
   message="NVFP4 profile selected on GPU(s) '${GPU_NAMES}'. LongLive2's published max-FPS NVFP4 path is Blackwell-oriented; Hopper testing should normally start with bf16_sp sequence parallel."
   if [[ "${LONGLIVE2_STRICT_PROFILE_GPU_MATCH}" == "1" ]]; then
     echo "[error] ${message}" >&2
@@ -326,13 +332,13 @@ if [[ "${LONGLIVE2_PROFILE}" == nvfp4* && "${GPU_NAMES}" != *"B200"* && "${GPU_N
   echo "[warn] ${message}" >&2
 fi
 
-python3 - "${PLAN_JSON}" "${LONGLIVE2_RUN_ID}" "${LONGLIVE2_SRC_DIR}" "${LONGLIVE2_CONFIG_PATH}" "${ENTRYPOINT}" "${NPROC}" "${LONGLIVE2_CUDA_VISIBLE_DEVICES}" "${LONGLIVE2_PROFILE}" "${GPU_NAMES}" "${LONGLIVE2_GENERATOR_CKPT}" "${LONGLIVE2_LORA_CKPT}" "${LONGLIVE2_SEED}" <<'PY'
+python3 - "${PLAN_JSON}" "${LONGLIVE2_RUN_ID}" "${LONGLIVE2_SRC_DIR}" "${LONGLIVE2_CONFIG_PATH}" "${ENTRYPOINT}" "${NPROC}" "${LONGLIVE2_CUDA_VISIBLE_DEVICES}" "${LONGLIVE2_PROFILE}" "${GPU_NAMES}" "${LONGLIVE2_GENERATOR_CKPT}" "${LONGLIVE2_LORA_CKPT}" "${LONGLIVE2_SEED}" "${LONGLIVE2_MIN_WALL_FPS}" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-out, run_id, src_dir, config_path, entrypoint, nproc, devices, profile, gpu_names, generator_ckpt, lora_ckpt, seed = sys.argv[1:]
+out, run_id, src_dir, config_path, entrypoint, nproc, devices, profile, gpu_names, generator_ckpt, lora_ckpt, seed, min_wall_fps = sys.argv[1:]
 payload = {
     "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     "run_id": run_id,
@@ -346,6 +352,7 @@ payload = {
     "generator_ckpt": generator_ckpt,
     "lora_ckpt": lora_ckpt,
     "seed": int(seed),
+    "min_wall_fps": float(min_wall_fps),
 }
 Path(out).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 PY
@@ -426,7 +433,10 @@ Path(out).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encod
 PY
 
 report_rc=0
-python3 "${SCRIPT_DIR}/longlive2_run_report.py" report --run-dir "${LONGLIVE2_RUN_DIR}" --config "${LONGLIVE2_CONFIG_PATH}" || report_rc=$?
+python3 "${SCRIPT_DIR}/longlive2_run_report.py" report \
+  --run-dir "${LONGLIVE2_RUN_DIR}" \
+  --config "${LONGLIVE2_CONFIG_PATH}" \
+  --min-wall-fps "${LONGLIVE2_MIN_WALL_FPS}" || report_rc=$?
 if [[ "${run_rc}" -ne 0 ]]; then
   exit "${run_rc}"
 fi

@@ -53,6 +53,7 @@ LONGLIVE2_FRAMES="${LONGLIVE2_FRAMES:-32}"
 LONGLIVE2_SP_SIZE="${LONGLIVE2_SP_SIZE:-2}"
 LONGLIVE2_DP_SIZE="${LONGLIVE2_DP_SIZE:-1}"
 LONGLIVE2_SAMPLING_STEPS="${LONGLIVE2_SAMPLING_STEPS:-}"
+LONGLIVE2_MIN_WALL_FPS="${LONGLIVE2_MIN_WALL_FPS:-}"
 LONGLIVE2_SEED="${LONGLIVE2_SEED:-0}"
 LONGLIVE2_PROMPT="${LONGLIVE2_PROMPT:-A reactive neon tunnel breathes with smooth cinematic motion.}"
 LONGLIVE2_SCHEDULE_CSV="${LONGLIVE2_SCHEDULE_CSV:-}"
@@ -115,6 +116,8 @@ Options:
   --frames <count>              Output frames, divisible by 8 (default: ${LONGLIVE2_FRAMES})
   --sp-size <count>             Sequence-parallel size (default: ${LONGLIVE2_SP_SIZE})
   --dp-size <count>             Data-parallel group count (default: ${LONGLIVE2_DP_SIZE})
+  --sampling-steps <count>      Sampling steps override
+  --min-wall-fps <fps>          Minimum wall-clock render FPS for run_report acceptance
   --seed <int>                  Seed written into generated config (default: ${LONGLIVE2_SEED})
   --prompt <text>               Text prompt for smoke generation
   --schedule-csv <path>         Remote/repo EEG schedule CSV for prompt blocks
@@ -176,6 +179,7 @@ apply_blackwell_tier() {
   LONGLIVE2_SP_SIZE="1"
   LONGLIVE2_DP_SIZE="1"
   LONGLIVE2_SAMPLING_STEPS="${LONGLIVE2_SAMPLING_STEPS:-2}"
+  LONGLIVE2_MIN_WALL_FPS="${LONGLIVE2_MIN_WALL_FPS:-24}"
   MIN_GPU_COUNT="1"
   MAX_GPU_COUNT="1"
   SELECTION_GOAL="cost"
@@ -295,6 +299,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --sampling-steps)
       LONGLIVE2_SAMPLING_STEPS="$2"
+      shift 2
+      ;;
+    --min-wall-fps)
+      LONGLIVE2_MIN_WALL_FPS="$2"
       shift 2
       ;;
     --seed)
@@ -420,6 +428,10 @@ case "${LONGLIVE2_PROFILE}" in
     exit 1
     ;;
 esac
+
+if [[ -z "${LONGLIVE2_MIN_WALL_FPS}" ]]; then
+  LONGLIVE2_MIN_WALL_FPS="0"
+fi
 
 runtime_arch_from_tag() {
   local tag="$1"
@@ -1018,9 +1030,13 @@ remote_run_smoke() {
     --dp-size "${LONGLIVE2_DP_SIZE}"
     --seed "${LONGLIVE2_SEED}"
     --prompt "${LONGLIVE2_PROMPT}"
+    --min-wall-fps "${LONGLIVE2_MIN_WALL_FPS}"
   )
   if [[ -n "${LONGLIVE2_SAMPLING_STEPS}" ]]; then
     run_args+=(--sampling-steps "${LONGLIVE2_SAMPLING_STEPS}")
+  fi
+  if [[ "${LONGLIVE2_PROFILE}" == nvfp4* ]]; then
+    run_args+=(--strict-profile-gpu-match)
   fi
   if [[ -n "${LONGLIVE2_SCHEDULE_CSV}" ]]; then
     run_args+=(--schedule-csv "${LONGLIVE2_SCHEDULE_CSV}")
@@ -1117,7 +1133,8 @@ PY
     --dp-size "${LONGLIVE2_DP_SIZE}" \
     --seed "${LONGLIVE2_SEED}" \
     --shot-prompt "A calm luminous ocean breathes slowly." \
-    --shot-prompt "A frantic neon tunnel accelerates."
+    --shot-prompt "A frantic neon tunnel accelerates." \
+    --min-wall-fps "${LONGLIVE2_MIN_WALL_FPS}"
   )
   if [[ -n "${LONGLIVE2_SAMPLING_STEPS}" ]]; then
     preflight_offline_args+=(--sampling-steps "${LONGLIVE2_SAMPLING_STEPS}")
@@ -1179,6 +1196,7 @@ min_credit_reserve_usd=${MIN_CREDIT_RESERVE_USD}
 max_estimated_spend_usd=${MAX_ESTIMATED_SPEND_USD}
 profile=${LONGLIVE2_PROFILE}
 cuda_archs=${LONGLIVE2_CUDA_ARCHS}
+min_wall_fps=${LONGLIVE2_MIN_WALL_FPS}
 geometry=${LONGLIVE2_HEIGHT}x${LONGLIVE2_WIDTH}
 frames=${LONGLIVE2_FRAMES}
 sp_size=${LONGLIVE2_SP_SIZE}

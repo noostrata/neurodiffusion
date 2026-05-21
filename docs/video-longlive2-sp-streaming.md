@@ -209,10 +209,12 @@ Implemented files:
    - supports `sp_size * dp_size` process count;
    - writes config, launch plan, torchrun log, GPU telemetry, report JSON, artifact QA, and contact sheet;
    - writes `run_timing.json` with wall-clock render FPS so realtime claims use generation speed rather than MP4 playback FPS;
+   - accepts `--min-wall-fps` and uses it in `run_report.json` acceptance;
    - accepts `--seed` so `sp1` and `sp2` comparisons can hold the seed fixed.
 5. `VideoDiffusion/run_longlive2_sp_vast_smoke.sh`
    - provisions a Vast host only when `--create-instance` is passed;
    - defaults to Hopper two-GPU SP, but `--blackwell-tier sm120` switches to RTX 5090 x1 `nvfp4_s2`;
+   - Blackwell tier mode sets `--min-wall-fps 24` and strict NVFP4 GPU matching for the remote render;
    - `--blackwell-cold-build` skips R2 restore and publishes a new NVFP4 tuple after a successful render;
    - supports `--preflight` for no-spend local checks, dry-run, offer selection, active-instance check, credit check, and budget gate;
    - writes sanitized selected-offer, credit, budget, phase-marker, and phase-report artifacts;
@@ -431,7 +433,7 @@ Acceptance:
 3. S2 checkpoint loads with `sampling_steps: 2`.
 4. output quality is not obviously degraded relative to BF16/4-step for the same prompt.
 5. throughput is high enough to justify the higher setup complexity.
-6. wall-clock render FPS from `run_timing.json` is `>=24` before calling it realtime; MP4 playback FPS alone does not count.
+6. wall-clock render FPS from `run_timing.json` is `>=24` before calling it realtime; MP4 playback FPS alone does not count. In Blackwell tier mode this is enforced in `run_report.json` through `wall_fps_ok`.
 
 ## Live EEG Integration Plan
 
